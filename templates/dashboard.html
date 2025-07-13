@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google Photos Manager</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+        }
+        
+        .header {
+            background: #1976d2;
+            color: white;
+            padding: 1rem 2rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .header h1 {
+            margin: 0;
+            font-size: 1.8rem;
+        }
+        
+        .controls {
+            background: white;
+            padding: 1rem 2rem;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: background-color 0.2s;
+        }
+        
+        .btn-primary {
+            background: #1976d2;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #1565c0;
+        }
+        
+        .btn-success {
+            background: #4caf50;
+            color: white;
+        }
+        
+        .btn-success:hover {
+            background: #45a049;
+        }
+        
+        .btn-danger {
+            background: #f44336;
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            background: #da190b;
+        }
+        
+        .btn-secondary {
+            background: #757575;
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background: #616161;
+        }
+        
+        .filters {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+        
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+        
+        .filter-group label {
+            font-size: 0.8rem;
+            color: #666;
+        }
+        
+        .filter-group select, .filter-group input {
+            padding: 0.25rem 0.5rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+        
+        .main-content {
+            padding: 2rem;
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        
+        .stat-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        
+        .stat-card h3 {
+            font-size: 2rem;
+            color: #1976d2;
+            margin-bottom: 0.5rem;
+        }
+        
+        .stat-card p {
+            color: #666;
+            font-size: 0.9rem;
+        }
+        
+        .photos-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+        
+        .photo-card {
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: transform 0.2s;
+        }
+        
+        .photo-card:hover {
+            transform: translateY(-2px);
+        }
+        
+        .photo-card img {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+        }
+        
+        .photo-info {
+            padding: 1rem;
+        }
+        
+        .photo-info h4 {
+            margin-bottom: 0.5rem;
+            font-size: 0.9rem;
+            color: #333;
+        }
+        
+        .photo-info p {
+            font-size: 0.8rem;
+            color: #666;
+            margin-bottom: 0.25rem;
+        }
+        
+        .photo-status {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        
+        .status-ingested {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+        
+        .status-embedded {
+            background: #e8f5e8;
+            color: #4caf50;
+        }
+        
+        .status-failed {
+            background: #ffebee;
+            color: #f44336;
+        }
+        
+        .status-deleted {
+            background: #f3e5f5;
+            color: #9c27b0;
+        }
+        
+        .ai-suggestion {
+            background: #fff3e0;
+            border: 1px solid #ffb74d;
+            border-radius: 4px;
+            padding: 0.5rem;
+            margin-top: 0.5rem;
+        }
+        
+        .ai-suggestion p {
+            color: #e65100;
+            font-size: 0.8rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .review-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+        
+        .review-actions button {
+            flex: 1;
+            padding: 0.25rem 0.5rem;
+            font-size: 0.7rem;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: #666;
+        }
+        
+        .error {
+            background: #ffebee;
+            color: #c62828;
+            padding: 1rem;
+            border-radius: 4px;
+            margin-bottom: 1rem;
+        }
+        
+        .success {
+            background: #e8f5e8;
+            color: #2e7d32;
+            padding: 1rem;
+            border-radius: 4px;
+            margin-bottom: 1rem;
+        }
+        
+        .group-header {
+            background: #f8f9fa;
+            padding: 1rem;
+            margin: 1rem 0;
+            border-radius: 4px;
+            border-left: 4px solid #1976d2;
+        }
+        
+        .group-header h3 {
+            margin: 0;
+            color: #1976d2;
+        }
+        
+        .group-photos {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Google Photos Manager</h1>
+    </div>
+    
+    <div class="controls">
+        <button class="btn btn-primary" onclick="calculateEmbeddings()">Calculate Embeddings</button>
+        <button class="btn btn-primary" onclick="createGroups()">Create Groups</button>
+        <button class="btn btn-success" onclick="runAIAnalysis()">Run AI Analysis</button>
+        <button class="btn btn-secondary" onclick="refreshPhotos()">Refresh</button>
+        
+        <div class="filters">
+            <div class="filter-group">
+                <label>Group By:</label>
+                <select id="groupBy" onchange="refreshPhotos()">
+                    <option value="none">No Grouping</option>
+                    <option value="similarity">Similarity Groups</option>
+                    <option value="date">Date</option>
+                    <option value="status">Status</option>
+                </select>
+            </div>
+            
+            <div class="filter-group">
+                <label>Filter Status:</label>
+                <select id="statusFilter" onchange="refreshPhotos()">
+                    <option value="all">All</option>
+                    <option value="ingested">Ingested</option>
+                    <option value="embedded">Embedded</option>
+                    <option value="grouped">Grouped</option>
+                    <option value="failed">Failed</option>
+                    <option value="deleted">Deleted</option>
+                </select>
+            </div>
+            
+            <div class="filter-group">
+                <label>Show AI Suggestions:</label>
+                <select id="aiFilter" onchange="refreshPhotos()">
+                    <option value="all">All</option>
+                    <option value="suggested">Only Suggested</option>
+                    <option value="not_suggested">Not Suggested</option>
+                </select>
+            </div>
+        </div>
+    </div>
+    
+    <div class="main-content">
+        <div id="message"></div>
+        
+        <div class="stats">
+            <div class="stat-card">
+                <h3 id="totalPhotos">0</h3>
+                <p>Total Photos</p>
+            </div>
+            <div class="stat-card">
+                <h3 id="embeddedPhotos">0</h3>
+                <p>Processed</p>
+            </div>
+            <div class="stat-card">
+                <h3 id="aiSuggestions">0</h3>
+                <p>AI Suggestions</p>
+            </div>
+            <div class="stat-card">
+                <h3 id="deletedPhotos">0</h3>
+                <p>Deleted</p>
+            </div>
+        </div>
+        
+        <div id="photosContainer">
+            <div class="loading">Loading photos...</div>
+        </div>
+    </div>
+    
+    <script>
+        let allPhotos = [];
+        
+        async function refreshPhotos() {
+            try {
+                const response = await fetch('/photos');
+                const data = await response.json();
+                allPhotos = data.photos;
+                
+                updateStats();
+                displayPhotos();
+            } catch (error) {
+                showMessage('Error loading photos: ' + error.message, 'error');
+            }
+        }
+        
+        function updateStats() {
+            const total = allPhotos.length;
+            const processed = allPhotos.filter(p => p.status === 'embedded' || p.status === 'grouped').length;
+            const aiSuggestions = allPhotos.filter(p => p.is_marked_for_deletion).length;
+            const deleted = allPhotos.filter(p => p.status === 'deleted').length;
+            
+            document.getElementById('totalPhotos').textContent = total;
+            document.getElementById('embeddedPhotos').textContent = processed;
+            document.getElementById('aiSuggestions').textContent = aiSuggestions;
+            document.getElementById('deletedPhotos').textContent = deleted;
+        }
+        
+        function displayPhotos() {
+            const container = document.getElementById('photosContainer');
+            const groupBy = document.getElementById('groupBy').value;
+            const statusFilter = document.getElementById('statusFilter').value;
+            const aiFilter = document.getElementById('aiFilter').value;
+            
+            // Filter photos
+            let filteredPhotos = allPhotos;
+            
+            if (statusFilter !== 'all') {
+                filteredPhotos = filteredPhotos.filter(p => p.status === statusFilter);
+            }
+            
+            if (aiFilter === 'suggested') {
+                filteredPhotos = filteredPhotos.filter(p => p.is_marked_for_deletion);
+            } else if (aiFilter === 'not_suggested') {
+                filteredPhotos = filteredPhotos.filter(p => !p.is_marked_for_deletion);
+            }
+            
+            if (filteredPhotos.length === 0) {
+                container.innerHTML = '<div class="loading">No photos found</div>';
+                return;
+            }
+            
+            // Group photos
+            let groupedPhotos = {};
+            
+            if (groupBy === 'similarity') {
+                filteredPhotos.forEach(photo => {
+                    const groupKey = photo.group_id || 'ungrouped';
+                    if (!groupedPhotos[groupKey]) groupedPhotos[groupKey] = [];
+                    groupedPhotos[groupKey].push(photo);
+                });
+            } else if (groupBy === 'date') {
+                filteredPhotos.forEach(photo => {
+                    const date = photo.creation_time.split('T')[0];
+                    if (!groupedPhotos[date]) groupedPhotos[date] = [];
+                    groupedPhotos[date].push(photo);
+                });
+            } else if (groupBy === 'status') {
+                filteredPhotos.forEach(photo => {
+                    if (!groupedPhotos[photo.status]) groupedPhotos[photo.status] = [];
+                    groupedPhotos[photo.status].push(photo);
+                });
+            } else {
+                groupedPhotos['all'] = filteredPhotos;
+            }
+            
+            // Render photos
+            let html = '';
+            
+            Object.keys(groupedPhotos).forEach(groupKey => {
+                if (groupBy !== 'none' && groupKey !== 'all') {
+                    html += `<div class="group-header"><h3>${groupKey}</h3></div>`;
+                }
+                
+                html += '<div class="group-photos">';
+                
+                groupedPhotos[groupKey].forEach(photo => {
+                    html += createPhotoCard(photo);
+                });
+                
+                html += '</div>';
+            });
+            
+            container.innerHTML = html;
+        }
+        
+        function createPhotoCard(photo) {
+            const statusClass = `status-${photo.status}`;
+            const aiSuggestion = photo.is_marked_for_deletion ? 
+                `<div class="ai-suggestion">
+                    <p><strong>AI Suggestion:</strong> ${photo.ai_suggestion_reason}</p>
+                    <div class="review-actions">
+                        <button class="btn btn-success" onclick="reviewPhoto('${photo.id}', 'reject')">Keep</button>
+                        <button class="btn btn-danger" onclick="reviewPhoto('${photo.id}', 'approve')">Delete</button>
+                    </div>
+                </div>` : '';
+            
+            return `
+                <div class="photo-card">
+                    <img src="/photo/${photo.id}" alt="Photo ${photo.id}" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZGRkIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNHB4IiBmaWxsPSIjOTk5IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+Tm8gSW1hZ2U8L3RleHQ+PC9zdmc+'">
+                    <div class="photo-info">
+                        <h4>Photo ${photo.id}</h4>
+                        <p><strong>Date:</strong> ${new Date(photo.creation_time).toLocaleDateString()}</p>
+                        <p><strong>Status:</strong> <span class="photo-status ${statusClass}">${photo.status}</span></p>
+                        ${photo.group_id ? `<p><strong>Group:</strong> ${photo.group_id}</p>` : ''}
+                        ${aiSuggestion}
+                    </div>
+                </div>
+            `;
+        }
+        
+        async function calculateEmbeddings() {
+            try {
+                showMessage('Calculating embeddings...', 'info');
+                const response = await fetch('/calculate-embeddings', { method: 'POST' });
+                const data = await response.json();
+                showMessage(data.message, 'success');
+                refreshPhotos();
+            } catch (error) {
+                showMessage('Error calculating embeddings: ' + error.message, 'error');
+            }
+        }
+        
+        async function createGroups() {
+            try {
+                showMessage('Creating similarity groups...', 'info');
+                const response = await fetch('/group-similar-photos', { method: 'POST' });
+                const data = await response.json();
+                showMessage(data.message, 'success');
+                refreshPhotos();
+            } catch (error) {
+                showMessage('Error creating groups: ' + error.message, 'error');
+            }
+        }
+        
+        async function runAIAnalysis() {
+            try {
+                showMessage('Running AI analysis...', 'info');
+                const response = await fetch('/ai-analysis', { method: 'POST' });
+                const data = await response.json();
+                showMessage(data.message, 'success');
+                refreshPhotos();
+            } catch (error) {
+                showMessage('Error running AI analysis: ' + error.message, 'error');
+            }
+        }
+        
+        async function reviewPhoto(photoId, action) {
+            try {
+                const formData = new FormData();
+                formData.append('action', action);
+                
+                const response = await fetch(`/review/${photoId}`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                showMessage(data.message, 'success');
+                refreshPhotos();
+            } catch (error) {
+                showMessage('Error reviewing photo: ' + error.message, 'error');
+            }
+        }
+        
+        function showMessage(message, type) {
+            const messageDiv = document.getElementById('message');
+            messageDiv.innerHTML = `<div class="${type}">${message}</div>`;
+            setTimeout(() => {
+                messageDiv.innerHTML = '';
+            }, 5000);
+        }
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            refreshPhotos();
+        });
+    </script>
+</body>
+</html> 

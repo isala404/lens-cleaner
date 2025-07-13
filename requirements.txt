@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+sqlite-vec
+python-multipart
+Pillow
+pydantic
+python-json-logger
+torch
+transformers
+openai
+jinja2
+aiofiles
+numpy
+requestsscikit-learn
