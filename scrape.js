@@ -196,4 +196,4 @@ async function scrapeGooglePhotos(maxItemsToScrape = 50, itemFetchDelayMs = 100,
     console.log(`--- COMPLETE: Scraped and sent ${scrapedItems.length} items. ---`);
 }
 
-scrapeGooglePhotos(20);
+scrapeGooglePhotos(2000000000000);

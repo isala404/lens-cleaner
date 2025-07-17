@@ -11,4 +11,6 @@ openai
 jinja2
 aiofiles
 numpy
-requestsscikit-learn
+requests
+scikit-learn
+google-genai

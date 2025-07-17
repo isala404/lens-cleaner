@@ -7,16 +7,18 @@ A simple FastAPI application for managing Google Photos with AI-powered duplicat
 1. **Photo Ingestion**: Upload photos with metadata to SQLite database
 2. **Embedding Calculation**: Generate image embeddings using Facebook's DINOv2 model
 3. **AI Analysis**: Use OpenAI GPT-4o to identify photos for deletion
-4. **Visual Review**: Web interface to review AI suggestions and manage photos
-5. **Grouping**: View photos grouped by date or status
-6. **Filtering**: Filter photos by status and AI suggestions
+4. **Gemini Batch Processing**: Use Google's Gemini API in batch mode for cost-effective photo analysis at scale
+5. **Visual Review**: Web interface to review AI suggestions and manage photos
+6. **Grouping**: View photos grouped by date or status
+7. **Filtering**: Filter photos by status and AI suggestions
 
 ## Setup
 
 ### Prerequisites
 
 - Python 3.8+
-- OpenAI API key (optional, for AI analysis)
+- OpenAI API key (optional, for traditional AI analysis)
+- Google API key (optional, for Gemini batch processing)
 
 ### Installation
 
@@ -25,9 +27,10 @@ A simple FastAPI application for managing Google Photos with AI-powered duplicat
 pip install -r requirements.txt
 ```
 
-2. Set up OpenAI API key (optional):
+2. Set up API keys (optional):
 ```bash
-export OPENAI_API_KEY="your-api-key-here"
+export OPENAI_API_KEY="your-openai-api-key-here"
+export GOOGLE_API_KEY="your-google-api-key-here"
 ```
 
 3. Run the application:
@@ -104,6 +107,52 @@ Review AI suggestion for a photo.
 **Form Data:**
 - `action`: "approve" or "reject"
 
+### POST /create-batch-job
+Create a Gemini batch job for photo analysis.
+
+**Response:**
+```json
+{
+    "message": "Batch job created successfully with 5 requests",
+    "batch_id": "uuid-here",
+    "job_name": "batches/job-name",
+    "total_requests": 5
+}
+```
+
+### POST /process-batch-results
+Process completed batch job results and update photo deletion suggestions.
+
+**Response:**
+```json
+{
+    "message": "Processed 2 batch jobs",
+    "processed_jobs": 2
+}
+```
+
+### GET /batch-jobs
+List all batch jobs with their status.
+
+**Response:**
+```json
+{
+    "jobs": [
+        {
+            "id": "uuid",
+            "job_name": "batches/job-name",
+            "display_name": "photo-analysis-uuid",
+            "status": "completed",
+            "created_at": "2024-01-01T12:00:00",
+            "completed_at": "2024-01-01T12:30:00",
+            "total_requests": 5,
+            "processed_requests": 5,
+            "error_message": null
+        }
+    ]
+}
+```
+
 ## Database Schema
 
 ### Photos Table
@@ -130,11 +179,27 @@ CREATE VIRTUAL TABLE photo_vectors USING vec0(
 
 ## Usage Workflow
 
+### Traditional Workflow (OpenAI)
 1. **Ingest Photos**: Use the `/ingest` endpoint to add photos to the database
 2. **Calculate Embeddings**: Click "Calculate Embeddings" in the UI to process photos
-3. **Run AI Analysis**: Click "Run AI Analysis" to get deletion suggestions
-4. **Review Suggestions**: Use the web interface to approve or reject AI suggestions
-5. **Group and Filter**: Use the filtering options to organize and review photos
+3. **Create Groups**: Click "Create Groups" to group similar photos
+4. **Run AI Analysis**: Click "Run AI Analysis (OpenAI)" to get immediate deletion suggestions
+5. **Review Suggestions**: Use the web interface to approve or reject AI suggestions
+
+### Batch Processing Workflow (Gemini)
+1. **Ingest Photos**: Use the `/ingest` endpoint to add photos to the database
+2. **Calculate Embeddings**: Click "Calculate Embeddings" in the UI to process photos
+3. **Create Groups**: Click "Create Groups" to group similar photos
+4. **Create Batch Job**: Click "Create Gemini Batch" to upload groups for analysis
+5. **Wait for Processing**: Batch jobs can take up to 24 hours (usually much faster)
+6. **Process Results**: Click "Process Batch Results" to retrieve and apply suggestions
+7. **Review Suggestions**: Use the web interface to approve or reject AI suggestions
+
+### Benefits of Batch Processing
+- **Cost Effective**: 50% discount compared to standard API calls
+- **High Throughput**: Process thousands of photos efficiently
+- **Better Analysis**: More detailed analysis with comprehensive photo curation expertise
+- **Asynchronous**: Submit job and check back later
 
 ## Web Interface
 
