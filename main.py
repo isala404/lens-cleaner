@@ -1169,6 +1169,32 @@ async def get_photo_image(photo_id: str):
     )
 
 
+@app.get("/photos/{photo_id}/deletion-status")
+async def get_photo_deletion_status(photo_id: str):
+    """Get photo deletion status via HTTP status codes only."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        SELECT is_marked_for_deletion 
+        FROM photos 
+        WHERE id = ?
+    """, (photo_id,))
+    
+    photo = cursor.fetchone()
+    
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    
+    conn.close()
+    
+    # Return 204 if marked for deletion, 202 if not marked
+    if photo["is_marked_for_deletion"]:
+        return Response(status_code=204)  # Marked for deletion
+    else:
+        return Response(status_code=202)  # Not marked for deletion
+
+
 @app.post("/review/{photo_id}")
 async def review_photo(photo_id: str, action: str = Form(...)):
     """Review AI suggestion - approve or reject deletion."""
