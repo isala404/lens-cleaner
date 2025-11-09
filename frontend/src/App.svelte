@@ -9,6 +9,7 @@
     groupPhotos,
     clearAllData,
     deleteSelectedPhotos,
+    deleteFromGooglePhotos,
     togglePhotoSelection,
     selectAllInGroup,
     clearSelection,
@@ -207,6 +208,20 @@
         await loadUngroupedPhotos();
       } catch (error) {
         alert('Error deleting photos: ' + error);
+      }
+    }
+  }
+
+  async function handleDeleteFromGooglePhotos() {
+    if ($appStore.selectedPhotos.size === 0) {
+      return;
+    }
+
+    if (confirm(`Create an album with ${$appStore.selectedPhotos.size} photo(s) in Google Photos for deletion?\n\nThis will:\n1. Open a new tab to Google Photos Albums\n2. Create an album with selected photos\n3. You can then review and delete them from the album`)) {
+      try {
+        await deleteFromGooglePhotos();
+      } catch (error) {
+        alert('Error initiating Google Photos deletion: ' + error);
       }
     }
   }
@@ -611,6 +626,9 @@
                   </button>
                   <button onclick={handleDeleteSelected} class="btn btn-danger">
                     🗑️ Delete {$appStore.selectedPhotos.size} Photos
+                  </button>
+                  <button onclick={handleDeleteFromGooglePhotos} class="btn btn-primary">
+                    📸 Delete from Google Photos
                   </button>
                 {/if}
               </div>
