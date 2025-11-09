@@ -205,12 +205,19 @@
   }
 
   function formatTimeEstimate(ms: number): string {
-    const seconds = Math.ceil(ms / 1000);
-    if (seconds < 60) return `${seconds}s`;
-    const minutes = Math.ceil(seconds / 60);
-    if (minutes < 60) return `${minutes}m`;
-    const hours = Math.ceil(minutes / 60);
-    return `${hours}h`;
+    const totalSeconds = Math.ceil(ms / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+
+    if (minutes === 0) {
+      return `${seconds} seconds`;
+    } else if (minutes < 60) {
+      return `${minutes} minute${minutes !== 1 ? 's' : ''} ${seconds} second${seconds !== 1 ? 's' : ''}`;
+    } else {
+      const hours = Math.floor(minutes / 60);
+      const remainingMinutes = minutes % 60;
+      return `${hours} hour${hours !== 1 ? 's' : ''} ${remainingMinutes} minute${remainingMinutes !== 1 ? 's' : ''}`;
+    }
   }
 
   // Filter groups by minimum size
@@ -224,7 +231,7 @@
       <h1 class="logo">📸 Lens Cleaner</h1>
       <p class="subtitle">Find and delete duplicate photos</p>
     </div>
-    {#if currentStep !== 'welcome'}
+    {#if currentStep === 'welcome'}
       <button onclick={() => showSettings = true} class="settings-btn">
         ⚙️ Settings
       </button>
@@ -292,9 +299,6 @@
             </p>
           </div>
           <div class="preview-actions">
-            <button onclick={handleRescan} class="btn btn-danger-outline">
-              🔄 Rescan Photos
-            </button>
             <button onclick={handleStartAnalysis} class="btn btn-primary">
               🔍 Find Duplicates Now
             </button>
@@ -302,18 +306,11 @@
         </div>
 
         <div class="photo-grid">
-          {#each $appStore.photos.slice(0, 50) as photo (photo.id)}
+          {#each $appStore.photos as photo (photo.id)}
             <div class="photo-preview">
               <img src="data:image/jpeg;base64,{photo.base64}" alt="Scanned" loading="lazy" />
             </div>
           {/each}
-          {#if $appStore.stats.totalPhotos > 50}
-            <div class="photo-preview more-indicator">
-              <div class="more-text">
-                +{$appStore.stats.totalPhotos - 50} more
-              </div>
-            </div>
-          {/if}
         </div>
       </div>
 
@@ -338,15 +335,26 @@
             <div class="stat-label">Photos Scanned</div>
           </div>
           <div class="stat-box">
-            <div class="stat-number">{$appStore.stats.photosWithEmbeddings}</div>
+            <div class="stat-number">
+              {#if $appStore.processingProgress.isProcessing}
+                {$appStore.processingProgress.current}
+              {:else}
+                {$appStore.stats.photosWithEmbeddings}
+              {/if}
+            </div>
             <div class="stat-label">Photos Analyzed</div>
           </div>
         </div>
 
         {#if $appStore.processingProgress.isProcessing}
           <div class="progress-container">
-            <div class="progress-bar">
-              <div class="progress-fill" style="width: {($appStore.processingProgress.current / $appStore.processingProgress.total * 100)}%"></div>
+            <div class="progress-bar-wrapper">
+              <span class="progress-percentage">
+                {Math.floor(60 + ($appStore.processingProgress.current / $appStore.processingProgress.total * 39))}%
+              </span>
+              <div class="progress-bar">
+                <div class="progress-fill" style="width: {($appStore.processingProgress.current / $appStore.processingProgress.total * 100)}%"></div>
+              </div>
             </div>
             <div class="progress-info">
               <span class="progress-text">
@@ -452,18 +460,11 @@
                 <p class="section-subtitle">These photos have no duplicates</p>
               </div>
               <div class="ungrouped-grid">
-                {#each ungroupedPhotos.slice(0, 100) as photo (photo.id)}
+                {#each ungroupedPhotos as photo (photo.id)}
                   <div class="ungrouped-photo">
                     <img src="data:image/jpeg;base64,{photo.base64}" alt="Unique" loading="lazy" />
                   </div>
                 {/each}
-                {#if ungroupedPhotos.length > 100}
-                  <div class="ungrouped-photo more-indicator">
-                    <div class="more-text">
-                      +{ungroupedPhotos.length - 100} more
-                    </div>
-                  </div>
-                {/if}
               </div>
             </div>
           {/if}
@@ -537,7 +538,7 @@
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick={() => showSettings = false}>Cancel</button>
-        <button class="btn btn-primary" onclick={handleSaveSettings}>Save & Reindex</button>
+        <button class="btn btn-primary" onclick={handleSaveSettings}>Save</button>
       </div>
     </div>
   </div>
@@ -858,13 +859,26 @@
     margin: 32px auto 0;
   }
 
+  .progress-bar-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .progress-percentage {
+    font-size: 18px;
+    font-weight: 700;
+    color: #667eea;
+    min-width: 50px;
+  }
+
   .progress-bar {
-    width: 100%;
+    flex: 1;
     height: 12px;
     background: #e2e8f0;
     border-radius: 6px;
     overflow: hidden;
-    margin-bottom: 12px;
   }
 
   .progress-fill {

@@ -67,11 +67,11 @@ async function startScraping(options: any = {}) {
   try {
     await scrapePhotos(maxItems, itemDelay, scrollDelay, maxStaleScrolls);
     scrapingProgress.status = 'completed';
-    updateProgressOverlay(`✓ Complete! Scraped ${scrapingProgress.totalScraped} photos`);
+    updateProgressOverlay(`✓ All done! Found ${scrapingProgress.totalScraped} photos`, scrapingProgress.totalScraped);
   } catch (error) {
     console.error('Scraping error:', error);
     scrapingProgress.status = 'error';
-    updateProgressOverlay(`✗ Error: ${(error as Error).message}`);
+    updateProgressOverlay(`✗ Oops! Something went wrong: ${(error as Error).message}`);
   } finally {
     isScrapingActive = false;
     setTimeout(() => hideProgressOverlay(), 3000);
@@ -86,7 +86,7 @@ function stopScraping() {
   if (scrapingProgress) {
     scrapingProgress.status = 'stopped';
   }
-  updateProgressOverlay('Scraping stopped by user');
+  updateProgressOverlay('Stopped! You can continue from the dashboard.', scrapingProgress?.totalScraped || 0);
   setTimeout(() => hideProgressOverlay(), 2000);
 }
 
@@ -126,7 +126,7 @@ async function scrapePhotos(maxItems: number, itemDelay: number, scrollDelay: nu
         if (totalScraped % 10 === 0) {
           scrapingProgress!.totalScraped = totalScraped;
           scrapingProgress!.currentBatch = batch.length;
-          updateProgressOverlay(`Scraped ${totalScraped} photos...`);
+          updateProgressOverlay(`Looking through your photos...`, totalScraped);
         }
 
         await sleep(itemDelay);
@@ -350,47 +350,92 @@ function showProgressOverlay() {
   overlay.style.cssText = `
     position: fixed;
     top: 20px;
-    right: 20px;
+    left: 50%;
+    transform: translateX(-50%);
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
-    padding: 20px 30px;
-    border-radius: 12px;
+    padding: 24px 32px;
+    border-radius: 16px;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
     z-index: 999999;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     font-size: 14px;
     font-weight: 500;
-    min-width: 250px;
+    min-width: 350px;
+    max-width: 500px;
     backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    border: 2px solid rgba(255, 255, 255, 0.3);
   `;
 
   overlay.innerHTML = `
-    <div style="display: flex; align-items: center; gap: 12px;">
-      <div class="spinner" style="
-        width: 20px;
-        height: 20px;
-        border: 3px solid rgba(255, 255, 255, 0.3);
-        border-top-color: white;
-        border-radius: 50%;
-        animation: spin 1s linear infinite;
-      "></div>
-      <div id="lens-cleaner-message">Initializing...</div>
+    <div style="margin-bottom: 16px;">
+      <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+        <div class="spinner" style="
+          width: 20px;
+          height: 20px;
+          border: 3px solid rgba(255, 255, 255, 0.3);
+          border-top-color: white;
+          border-radius: 50%;
+          animation: spin 1s linear infinite;
+        "></div>
+        <div id="lens-cleaner-message" style="font-size: 16px; font-weight: 600;">Getting started...</div>
+      </div>
+      <div id="lens-cleaner-count" style="font-size: 13px; opacity: 0.9; margin-left: 32px;">
+        0 photos collected
+      </div>
     </div>
+    <div style="background: rgba(255, 255, 255, 0.15); padding: 12px 16px; border-radius: 8px; font-size: 13px; line-height: 1.5; margin-bottom: 12px;">
+      ⚠️ <strong>Please keep this page open!</strong><br/>
+      Closing it now will stop the scan. This may take a few minutes.
+    </div>
+    <button id="lens-cleaner-stop" style="
+      width: 100%;
+      padding: 10px 16px;
+      background: rgba(239, 68, 68, 0.9);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    ">
+      ⏹ Stop Scanning
+    </button>
     <style>
       @keyframes spin {
         to { transform: rotate(360deg); }
+      }
+      #lens-cleaner-stop:hover {
+        background: rgba(239, 68, 68, 1);
+        transform: translateY(-1px);
       }
     </style>
   `;
 
   document.body.appendChild(overlay);
+
+  // Add stop button handler
+  const stopBtn = document.getElementById('lens-cleaner-stop');
+  if (stopBtn) {
+    stopBtn.addEventListener('click', () => {
+      stopScraping();
+    });
+  }
 }
 
-function updateProgressOverlay(message: string) {
+function updateProgressOverlay(message: string, count?: number) {
   const messageElement = document.getElementById('lens-cleaner-message');
   if (messageElement) {
     messageElement.textContent = message;
+  }
+
+  // Update count if provided
+  if (count !== undefined) {
+    const countElement = document.getElementById('lens-cleaner-count');
+    if (countElement) {
+      countElement.textContent = `${count} photos collected`;
+    }
   }
 }
 

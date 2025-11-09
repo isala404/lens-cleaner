@@ -41,6 +41,7 @@ async function loadStats() {
  */
 function updateButtonStates() {
   const startBtn = document.getElementById('startScan');
+  const clearBtn = document.getElementById('clearData');
   const dashboardBtn = document.getElementById('openDashboard');
 
   if (!startBtn) return;
@@ -48,15 +49,21 @@ function updateButtonStates() {
   if (isProcessing) {
     startBtn.disabled = true;
     startBtn.textContent = '⏳ Scanning...';
+    if (clearBtn) {
+      clearBtn.classList.add('hidden');
+    }
     if (dashboardBtn) {
       dashboardBtn.style.display = 'none';
     }
   } else if (hasScannedPhotos) {
-    // Has scanned photos - show "View Results" as primary and "Rescan" as secondary
-    startBtn.classList.remove('btn-primary');
-    startBtn.classList.add('btn-danger-outline');
+    // Has scanned photos - show "View Results" as primary, "Scan Again" and "Clear" as secondary
+    startBtn.classList.remove('btn-primary', 'btn-danger-outline');
+    startBtn.classList.add('btn-secondary');
     startBtn.disabled = false;
-    startBtn.textContent = '⚠️ Rescan Photos';
+    startBtn.textContent = '🔄 Scan More Photos';
+    if (clearBtn) {
+      clearBtn.classList.remove('hidden');
+    }
     if (dashboardBtn) {
       dashboardBtn.style.display = 'block';
       dashboardBtn.classList.remove('btn-secondary');
@@ -65,10 +72,13 @@ function updateButtonStates() {
     }
   } else {
     // No scanned photos - show "Find Duplicates" as primary
-    startBtn.classList.remove('btn-danger-outline');
+    startBtn.classList.remove('btn-danger-outline', 'btn-secondary');
     startBtn.classList.add('btn-primary');
     startBtn.disabled = false;
     startBtn.textContent = '🔍 Find Duplicates';
+    if (clearBtn) {
+      clearBtn.classList.add('hidden');
+    }
     if (dashboardBtn) {
       dashboardBtn.style.display = 'block';
       dashboardBtn.classList.remove('btn-primary');
@@ -123,6 +133,11 @@ function setupEventListeners() {
   document.getElementById('startScan').addEventListener('click', async () => {
     await startScan();
   });
+
+  // Clear all data
+  document.getElementById('clearData').addEventListener('click', async () => {
+    await handleClearData();
+  });
 }
 
 /**
@@ -157,6 +172,34 @@ async function ensureContentScriptLoaded(tabId) {
 }
 
 /**
+ * Handle clearing all data
+ */
+async function handleClearData() {
+  const confirmed = confirm(
+    'This will remove everything stored by Lens Cleaner.\n\n' +
+    'Think of it like clearing out your desk to start fresh.\n\n' +
+    'You\'ll need to scan your photos again from Google Photos.\n\n' +
+    'Is this what you want to do?'
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    showMessage('Clearing everything...', 'info');
+    await chrome.runtime.sendMessage({ action: 'clearAllData' });
+    hasScannedPhotos = false;
+    await loadStats();
+    updateButtonStates();
+    showMessage('All cleared! Ready for a fresh start.', 'success');
+  } catch (error) {
+    console.error('Error clearing data:', error);
+    showMessage('Oops! Something went wrong while clearing.', 'error');
+  }
+}
+
+/**
  * Start scanning
  */
 async function startScan() {
@@ -166,45 +209,20 @@ async function startScan() {
   }
 
   if (isProcessing) {
-    showMessage('Already processing...', 'info');
+    showMessage('Already scanning your photos...', 'info');
     return;
-  }
-
-  // If already has photos, confirm rescan with warning
-  if (hasScannedPhotos) {
-    const confirmed = confirm(
-      '⚠️ WARNING: This will delete all currently scanned photos and groups.\n\n' +
-      'You will need to scan from Google Photos again and re-analyze everything.\n\n' +
-      'Consider using "Reindex" from the dashboard instead if you just want to adjust settings.\n\n' +
-      'Continue with rescan?'
-    );
-
-    if (!confirmed) {
-      return;
-    }
-
-    // Clear all data before rescanning
-    try {
-      await chrome.runtime.sendMessage({ action: 'clearAllData' });
-      hasScannedPhotos = false;
-      await loadStats();
-    } catch (error) {
-      console.error('Error clearing data:', error);
-      showMessage('Failed to clear data', 'error');
-      return;
-    }
   }
 
   try {
     isProcessing = true;
-    showMessage('Starting...', 'info');
+    showMessage('Getting ready to scan...', 'info');
     updateButtonStates();
 
     // Ensure content script is loaded (fixes bug with already-opened tabs)
     const scriptLoaded = await ensureContentScriptLoaded(currentTab.id);
 
     if (!scriptLoaded) {
-      showMessage('Please reload this Google Photos tab and try again', 'error');
+      showMessage('Please refresh this Google Photos page and try again', 'error');
       isProcessing = false;
       updateButtonStates();
       return;
@@ -224,13 +242,13 @@ async function startScan() {
     });
 
     if (response && response.status === 'started') {
-      showMessage('Scanning your photos...', 'success');
+      showMessage('Looking through your photos...', 'success');
       updateButtonStates();
       console.log('Scan started successfully');
     }
   } catch (error) {
     console.error('Error starting scan:', error);
-    showMessage('Failed to start. Please make sure this is Google Photos.', 'error');
+    showMessage('Could not start. Make sure you\'re on Google Photos.', 'error');
     isProcessing = false;
     updateButtonStates();
   }
@@ -275,7 +293,7 @@ function startStatusPolling() {
         } else if (!response.isActive && isProcessing) {
           // Scan finished
           isProcessing = false;
-          showMessage('Scan complete! Open the dashboard to continue.', 'success');
+          showMessage('All done! Click "View Results" to see what we found.', 'success');
           // Refresh stats
           await loadStats();
         }
