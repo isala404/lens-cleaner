@@ -52,8 +52,9 @@ export class GroupingProcessor {
 
     const groups: PhotoGroup[] = [];
     const assignedPhotos = new Set<string>();
+    const timeWindowSeconds = timeWindowMinutes * 60;
 
-    // Use a sliding window approach
+    // Use a sliding window approach with improved similarity checking
     for (let i = 0; i < sortedPhotos.length; i++) {
       const photo1 = sortedPhotos[i];
 
@@ -67,7 +68,7 @@ export class GroupingProcessor {
         continue;
       }
 
-      // Mark photo1 as processed immediately (matches main.py behavior)
+      // Mark photo1 as processed immediately
       assignedPhotos.add(photo1.id);
 
       // Start a new group with photo1
@@ -79,6 +80,11 @@ export class GroupingProcessor {
         startTime: new Date(photo1.dateTaken),
         endTime: new Date(photo1.dateTaken)
       };
+
+      // Store embeddings of photos in this group for comparison
+      const groupEmbeddings: Array<{ id: string; embedding: number[] }> = [
+        { id: photo1.id, embedding: embedding1 }
+      ];
 
       // Parse photo1 time for comparison
       const photo1Time = new Date(photo1.dateTaken).getTime();
@@ -95,14 +101,16 @@ export class GroupingProcessor {
         // Parse photo2 time
         const photo2Time = new Date(photo2.dateTaken).getTime();
 
-        // Check time window (60 minutes = 3600 seconds = 3600000 milliseconds)
-        const timeDiff = Math.abs(photo2Time - photo1Time) / 1000; // in seconds
-        if (timeDiff > 3600) { // 60 minutes = 3600 seconds
-          // Since photos are sorted by time, we can break early
-          // if we've exceeded the time window
-          if (photo2Time > photo1Time) {
-            break;
-          }
+        // Check time window - use the configured time window in seconds
+        const timeDiffSeconds = Math.abs(photo2Time - photo1Time) / 1000;
+        
+        // Break early if we've gone past the time window (photos are sorted)
+        if (photo2Time > photo1Time && timeDiffSeconds > timeWindowSeconds) {
+          break;
+        }
+        
+        // Skip if outside time window but continue checking (for photos before photo1)
+        if (timeDiffSeconds > timeWindowSeconds) {
           continue;
         }
 
@@ -111,22 +119,39 @@ export class GroupingProcessor {
           continue;
         }
 
-        // Calculate similarity
-        const similarity = EmbeddingsProcessor.cosineSimilarity(
-          embedding1,
-          embedding2
-        );
+        // IMPROVED: Check similarity against ALL photos in the group, not just the first one
+        // A photo should be added if it's similar to ANY photo already in the group
+        let maxSimilarity = -1;
+        let isSimilarToGroup = false;
 
-        // If similar enough, add to group and mark as processed
-        if (similarity >= similarityThreshold) {
+        for (const groupPhoto of groupEmbeddings) {
+          const similarity = EmbeddingsProcessor.cosineSimilarity(
+            groupPhoto.embedding,
+            embedding2
+          );
+
+          maxSimilarity = Math.max(maxSimilarity, similarity);
+
+          // If similar enough to any photo in the group, add it
+          if (similarity >= similarityThreshold) {
+            isSimilarToGroup = true;
+            break; // No need to check other photos once we find a match
+          }
+        }
+
+        // If similar enough to the group, add to group and mark as processed
+        if (isSimilarToGroup) {
           group.photoIds.push(photo2.id);
-          group.similarities.push(similarity);
+          group.similarities.push(maxSimilarity);
           group.endTime = new Date(photo2.dateTaken);
           assignedPhotos.add(photo2.id);
+          
+          // Add this photo's embedding to the group for future comparisons
+          groupEmbeddings.push({ id: photo2.id, embedding: embedding2 });
         }
       }
 
-      // Only create group if it has at least 2 photos (matches main.py)
+      // Only create group if it has at least 2 photos
       if (group.photoIds.length >= 2) {
         // Calculate average similarity
         group.avgSimilarity =
@@ -138,6 +163,8 @@ export class GroupingProcessor {
           (group.endTime.getTime() - group.startTime.getTime()) / 1000 / 60; // in minutes
 
         groups.push(group);
+        
+        console.log(`Group ${groups.length}: ${group.photoIds.length} photos, avg similarity: ${group.avgSimilarity.toFixed(3)}, time span: ${group.timeSpan.toFixed(1)} min`);
       }
     }
 

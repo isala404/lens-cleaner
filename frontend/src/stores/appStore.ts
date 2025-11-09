@@ -49,7 +49,7 @@ const defaultState: AppState = {
   },
   selectedPhotos: new Set(),
   settings: {
-    similarityThreshold: 0.6,
+    similarityThreshold: 0.45, // Default to 45% (85% in UI)
     timeWindowMinutes: 60,
     maxPhotos: 1000
   },

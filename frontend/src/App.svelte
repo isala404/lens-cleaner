@@ -32,10 +32,35 @@
   
   // Local settings for editing (before save)
   let editingSettings = {
-    similarityThreshold: 0.6,
+    similarityThreshold: 0.45, // Default to 45% (85% in UI)
     timeWindowMinutes: 60,
     minGroupSize: 2
   };
+
+  // Slider position for similarity threshold (0-100 in UI)
+  // Maps to backend threshold (0.2-0.7)
+  // UI 85% → Backend 45% (0.45)
+  let similaritySliderPosition = 70; // Default to 70%
+
+  // Convert backend threshold (0.2-0.7) to UI slider position (0-100)
+  function thresholdToSliderPosition(threshold: number): number {
+    // Map 0.2-0.45 to 0-85% slider position
+    if (threshold <= 0.45) {
+      return ((threshold - 0.2) / (0.45 - 0.2)) * 85;
+    }
+    // Map 0.45-0.7 to 85-100% slider position
+    return 85 + ((threshold - 0.45) / (0.7 - 0.45)) * 15;
+  }
+
+  // Convert UI slider position (0-100) to backend threshold (0.2-0.7)
+  function sliderPositionToThreshold(position: number): number {
+    // Map 0-85% slider to 0.2-0.45 threshold
+    if (position <= 85) {
+      return 0.2 + (position / 85) * (0.45 - 0.2);
+    }
+    // Map 85-100% slider to 0.45-0.7 threshold
+    return 0.45 + ((position - 85) / 15) * (0.7 - 0.45);
+  }
 
   // Cache for group photos to avoid re-fetching
   let groupPhotosCache = new Map<string, Photo[]>();
@@ -54,6 +79,8 @@
     editingSettings.similarityThreshold = $appStore.settings.similarityThreshold;
     editingSettings.timeWindowMinutes = $appStore.settings.timeWindowMinutes;
     editingSettings.minGroupSize = $appStore.minGroupSize;
+    // Initialize slider position from threshold
+    similaritySliderPosition = thresholdToSliderPosition(editingSettings.similarityThreshold);
     
     // Check if we need to resume interrupted processing
     if ($appStore.processingProgress.isProcessing) {
@@ -154,6 +181,16 @@
     }
   }
 
+  function handleClearSelection() {
+    if ($appStore.selectedPhotos.size === 0) {
+      return;
+    }
+
+    if (confirm(`Clear selection of ${$appStore.selectedPhotos.size} photo(s)?`)) {
+      clearSelection();
+    }
+  }
+
   async function handleDeleteSelected() {
     if ($appStore.selectedPhotos.size === 0) {
       return;
@@ -238,7 +275,14 @@
     editingSettings.similarityThreshold = $appStore.settings.similarityThreshold;
     editingSettings.timeWindowMinutes = $appStore.settings.timeWindowMinutes;
     editingSettings.minGroupSize = $appStore.minGroupSize;
+    // Initialize slider position from threshold
+    similaritySliderPosition = thresholdToSliderPosition(editingSettings.similarityThreshold);
     showSettings = true;
+  }
+
+  // Update threshold when slider position changes
+  $: if (showSettings) {
+    editingSettings.similarityThreshold = sliderPositionToThreshold(similaritySliderPosition);
   }
 
   async function getGroupPhotos(group: Group): Promise<Photo[]> {
@@ -333,11 +377,6 @@
       <h1 class="logo">📸 Lens Cleaner</h1>
       <p class="subtitle">Find and delete duplicate photos</p>
     </div>
-    {#if currentStep === 'welcome'}
-      <button onclick={handleOpenSettings} class="settings-btn">
-        ⚙️ Settings
-      </button>
-    {/if}
   </header>
 
   <!-- Progress Steps -->
@@ -409,9 +448,6 @@
             <button onclick={handleStartIndexing} class="btn btn-primary">
               🧠 Start Indexing
             </button>
-            <button onclick={handleOpenSettings} class="btn btn-secondary">
-              ⚙️ Settings
-            </button>
           </div>
         </div>
 
@@ -428,21 +464,23 @@
       <!-- Indexed Screen - Show indexed photos with grouping options -->
       <div class="indexed-screen">
         <div class="indexed-header">
-          <div>
-            <h2>✅ {$appStore.stats.photosWithEmbeddings} Photos Indexed</h2>
-            <p class="indexed-subtitle">
-              Ready to find duplicates. Adjust settings if needed before grouping.
-            </p>
+          <div class="indexed-title-section">
+            <button onclick={handleReindex} class="btn-back">
+              ← Reindex
+            </button>
+            <div>
+              <h2>✅ {$appStore.stats.photosWithEmbeddings} Photos Indexed</h2>
+              <p class="indexed-subtitle">
+                Ready to find duplicates. Adjust settings if needed before grouping.
+              </p>
+            </div>
           </div>
           <div class="indexed-actions">
             <button onclick={handleStartGrouping} class="btn btn-primary">
               🔍 Start Grouping
             </button>
-            <button onclick={handleOpenSettings} class="btn btn-secondary">
-              ⚙️ Settings
-            </button>
-            <button onclick={handleReindex} class="btn btn-secondary">
-              🔄 Reindex
+            <button onclick={handleOpenSettings} class="settings-btn">
+              ⚙️
             </button>
           </div>
         </div>
@@ -478,17 +516,31 @@
         <div class="stats-grid">
           <div class="stat-box">
             <div class="stat-number">{$appStore.stats.totalPhotos}</div>
-            <div class="stat-label">Photos Scanned</div>
+            <div class="stat-label">
+              {#if currentStep === 'indexing'}
+                Photos Scanned
+              {:else}
+                Photos Indexed
+              {/if}
+            </div>
           </div>
           <div class="stat-box">
             <div class="stat-number">
               {#if $appStore.processingProgress.isProcessing}
                 {$appStore.processingProgress.current}
-              {:else}
+              {:else if currentStep === 'indexing'}
                 {$appStore.stats.photosWithEmbeddings}
+              {:else}
+                {$appStore.stats.totalGroups}
               {/if}
             </div>
-            <div class="stat-label">Photos Analyzed</div>
+            <div class="stat-label">
+              {#if currentStep === 'indexing'}
+                Photos Analyzed
+              {:else}
+                Groups Found
+              {/if}
+            </div>
           </div>
         </div>
 
@@ -541,26 +593,24 @@
         <div class="review-screen">
           {#if displayGroups.length > 0}
             <div class="review-header">
-              <div>
-                <h2>Found {displayGroups.length} duplicate groups</h2>
-                <p class="review-subtitle">
-                  Click photos to mark for deletion
-                </p>
+              <div class="review-title-section">
+                <button onclick={handleRegroup} class="btn-back">
+                  ← Regroup
+                </button>
+                <div>
+                  <h2>Found {displayGroups.length} duplicate groups</h2>
+                  <p class="review-subtitle">
+                    Click photos to mark for deletion
+                  </p>
+                </div>
               </div>
               <div class="review-actions">
                 {#if $appStore.selectedPhotos.size > 0}
-                  <button onclick={clearSelection} class="btn btn-secondary">
+                  <button onclick={handleClearSelection} class="btn btn-secondary">
                     Clear ({$appStore.selectedPhotos.size})
                   </button>
                   <button onclick={handleDeleteSelected} class="btn btn-danger">
                     🗑️ Delete {$appStore.selectedPhotos.size} Photos
-                  </button>
-                {:else}
-                  <button onclick={handleRegroup} class="btn btn-secondary">
-                    🔄 Regroup
-                  </button>
-                  <button onclick={handleReindex} class="btn btn-secondary">
-                    🔄 Reindex
                   </button>
                 {/if}
               </div>
@@ -647,16 +697,16 @@
             <input
               type="range"
               id="similarityThreshold"
-              bind:value={editingSettings.similarityThreshold}
-              min="0.3"
-              max="0.98"
-              step="0.01"
+              bind:value={similaritySliderPosition}
+              min="0"
+              max="100"
+              step="1"
               class="slider"
             />
             <span class="slider-label">Strict</span>
           </div>
-          <span class="slider-value">{(editingSettings.similarityThreshold * 100).toFixed(0)}% match required</span>
-          <span class="setting-hint">Lower values group more photos together (default: 60%)</span>
+          <span class="slider-value">{similaritySliderPosition}% match required</span>
+          <span class="setting-hint">Lower values group more photos together (default: 70%)</span>
         </div>
 
         <div class="setting-group">
@@ -742,14 +792,16 @@
   }
 
   .settings-btn {
-    padding: 10px 20px;
+    padding: 10px 16px;
     background: #f1f5f9;
     border: none;
     border-radius: 8px;
-    font-size: 14px;
-    font-weight: 600;
+    font-size: 20px;
     cursor: pointer;
     transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .settings-btn:hover {
@@ -914,6 +966,29 @@
     margin-bottom: 32px;
     padding-bottom: 24px;
     border-bottom: 2px solid #e2e8f0;
+  }
+
+  .indexed-title-section {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .btn-back {
+    padding: 8px 16px;
+    background: #f1f5f9;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #475569;
+    cursor: pointer;
+    transition: all 0.2s;
+    align-self: flex-start;
+  }
+
+  .btn-back:hover {
+    background: #e2e8f0;
   }
 
   .indexed-header h2 {
@@ -1154,6 +1229,12 @@
     margin-bottom: 32px;
     padding-bottom: 24px;
     border-bottom: 2px solid #e2e8f0;
+  }
+
+  .review-title-section {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
   }
 
   .review-header h2 {
@@ -1540,6 +1621,10 @@
     .review-header, .preview-header, .indexed-header {
       flex-direction: column;
       gap: 20px;
+    }
+
+    .indexed-title-section, .review-title-section {
+      width: 100%;
     }
 
     .review-actions, .preview-actions, .indexed-actions {

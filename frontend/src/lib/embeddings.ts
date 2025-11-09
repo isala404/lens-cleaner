@@ -112,7 +112,11 @@ export class EmbeddingsProcessor {
         embedding = new Float32Array(embedding);
       }
 
-      return embedding;
+      // CRITICAL: Normalize the embedding for cosine similarity
+      // Without normalization, cosine similarity will return huge values
+      const normalized = this.normalizeEmbedding(embedding);
+
+      return normalized;
     } catch (error) {
       console.error('Error calculating embedding:', error);
       throw error;
