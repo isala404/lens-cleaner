@@ -19,11 +19,29 @@ export default defineConfig({
           if (chunkInfo.name === 'service-worker' || chunkInfo.name === 'content-scraper') {
             return '[name].js';
           }
-          return 'assets/[name].js';
+          return 'assets/[name]-[hash].js';
         },
-        chunkFileNames: 'assets/[name].js',
-        assetFileNames: 'assets/[name].[ext]'
+        chunkFileNames: 'assets/[name]-[hash].js',
+        assetFileNames: (assetInfo) => {
+          // Keep WASM files in root for easier loading
+          if (assetInfo.name && assetInfo.name.endsWith('.wasm')) {
+            return '[name].[ext]';
+          }
+          return 'assets/[name]-[hash].[ext]';
+        },
+        inlineDynamicImports: false,
+        manualChunks: undefined
       }
-    }
+    },
+    target: 'esnext',
+    minify: false,
+    // Ensure WASM files are copied
+    assetsInlineLimit: 0,
+  },
+  worker: {
+    format: 'es'
+  },
+  optimizeDeps: {
+    exclude: ['@huggingface/transformers']
   }
 })

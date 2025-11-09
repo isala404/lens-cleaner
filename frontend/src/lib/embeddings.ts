@@ -3,7 +3,25 @@
  * Calculates image embeddings using Transformers.js CLIP model
  */
 
-import { pipeline, type FeatureExtractionPipeline } from '@huggingface/transformers';
+import { pipeline, env, type FeatureExtractionPipeline } from '@huggingface/transformers';
+
+// Configure transformers.js environment for Chrome extension
+// This is crucial to prevent CSP violations
+if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id) {
+  // Running in Chrome extension context
+  env.allowLocalModels = false;
+  env.allowRemoteModels = true;
+  env.useBrowserCache = true;
+  env.backends.onnx.wasm.proxy = false;
+
+  // Set custom WASM paths to use extension's local files
+  // This prevents loading from CDN which violates CSP
+  const extensionURL = chrome.runtime.getURL('/');
+  env.backends.onnx.wasm.wasmPaths = extensionURL;
+
+  console.log('Transformers.js configured for Chrome extension');
+  console.log('WASM paths set to:', extensionURL);
+}
 
 // Global feature extractor instance
 let featureExtractor: FeatureExtractionPipeline | null = null;
