@@ -72,6 +72,49 @@ export const appStore = writable<AppState>(defaultState);
 let embeddingsProcessor: EmbeddingsProcessor | null = null;
 let groupingProcessor: GroupingProcessor | null = null;
 
+// Persist processing state
+function saveProcessingState(progress: ProcessingProgress, originalTotal?: number) {
+  if (progress.isProcessing) {
+    localStorage.setItem('lensCleanerProcessingState', JSON.stringify({
+      type: progress.type,
+      current: progress.current,
+      total: progress.total,
+      originalTotal: originalTotal || progress.total, // Save original total for accurate progress
+      message: progress.message,
+      timestamp: Date.now()
+    }));
+  } else {
+    localStorage.removeItem('lensCleanerProcessingState');
+  }
+}
+
+// Restore processing state
+function getSavedProcessingState(): (ProcessingProgress & { originalTotal?: number }) | null {
+  try {
+    const saved = localStorage.getItem('lensCleanerProcessingState');
+    if (!saved) return null;
+    
+    const state = JSON.parse(saved);
+    // Check if state is recent (within last hour) to avoid stale resumes
+    const age = Date.now() - state.timestamp;
+    if (age > 3600000) { // 1 hour
+      localStorage.removeItem('lensCleanerProcessingState');
+      return null;
+    }
+    
+    return {
+      isProcessing: true,
+      type: state.type,
+      current: state.current,
+      total: state.total,
+      originalTotal: state.originalTotal,
+      message: state.message || ''
+    };
+  } catch {
+    return null;
+  }
+}
+
 // Initialize database
 export async function initializeApp() {
   try {
@@ -84,6 +127,33 @@ export async function initializeApp() {
     if (savedSettings) {
       const settings = JSON.parse(savedSettings);
       appStore.update(state => ({ ...state, settings }));
+    }
+
+    // Check for interrupted processing
+    const savedProgress = getSavedProcessingState();
+    if (savedProgress) {
+      // Check if there's still work to do
+      const stats = await db.getStats();
+      const photosWithoutEmbeddings = await db.getPhotosWithoutEmbeddings(1);
+      
+      if (savedProgress.type === 'embedding' && photosWithoutEmbeddings.length > 0) {
+        // Resume embedding processing
+        appStore.update(s => ({
+          ...s,
+          processingProgress: savedProgress
+        }));
+        console.log('Resuming interrupted embedding process...');
+      } else if (savedProgress.type === 'grouping' && stats.photosWithEmbeddings > 0 && stats.totalGroups === 0) {
+        // Resume grouping
+        appStore.update(s => ({
+          ...s,
+          processingProgress: savedProgress
+        }));
+        console.log('Resuming interrupted grouping process...');
+      } else {
+        // No work to resume, clear saved state
+        localStorage.removeItem('lensCleanerProcessingState');
+      }
     }
   } catch (error) {
     console.error('Failed to initialize app:', error);
@@ -112,16 +182,25 @@ export async function refreshData() {
 
 // Calculate embeddings
 export async function calculateEmbeddings() {
+  const state = get(appStore);
+  const savedProgress = getSavedProcessingState();
+  
+  // Check if we're resuming
+  const isResuming = savedProgress?.type === 'embedding' && savedProgress.isProcessing;
+  const originalTotal = savedProgress?.originalTotal;
+  const alreadyProcessed = savedProgress?.current || 0;
+
   appStore.update(s => ({
     ...s,
     processingProgress: {
       isProcessing: true,
       type: 'embedding',
-      current: 0,
-      total: 0,
-      message: 'Initializing AI model...'
+      current: alreadyProcessed,
+      total: originalTotal || 0,
+      message: isResuming ? 'Resuming analysis...' : 'Initializing AI model...'
     }
   }));
+  saveProcessingState({ isProcessing: true, type: 'embedding', current: alreadyProcessed, total: originalTotal || 0, message: 'Initializing AI model...' }, originalTotal);
 
   try {
     // Initialize processor if needed
@@ -133,17 +212,26 @@ export async function calculateEmbeddings() {
       await embeddingsProcessor.initialize();
     }
 
-    // Get photos without embeddings
+    // Get photos without embeddings (these are the remaining photos to process)
     const photos = await db.getPhotosWithoutEmbeddings(10000);
+    
+    // If resuming, use original total; otherwise use current count
+    const totalToShow = originalTotal || photos.length;
+    const currentProcessed = isResuming ? alreadyProcessed : 0;
 
+    const remainingAtStart = totalToShow - currentProcessed;
     appStore.update(s => ({
       ...s,
       processingProgress: {
         ...s.processingProgress,
-        total: photos.length,
-        message: `Processing ${photos.length} photos...`
+        total: totalToShow,
+        current: currentProcessed,
+        message: isResuming 
+          ? `Resuming: ${remainingAtStart} photo${remainingAtStart !== 1 ? 's' : ''} left...`
+          : `${remainingAtStart} photo${remainingAtStart !== 1 ? 's' : ''} left...`
       }
     }));
+    saveProcessingState({ isProcessing: true, type: 'embedding', current: currentProcessed, total: totalToShow, message: `${remainingAtStart} photo${remainingAtStart !== 1 ? 's' : ''} left...` }, totalToShow);
 
     if (photos.length === 0) {
       appStore.update(s => ({
@@ -156,25 +244,28 @@ export async function calculateEmbeddings() {
           message: ''
         }
       }));
-      return 0;
+      localStorage.removeItem('lensCleanerProcessingState');
+      return alreadyProcessed;
     }
 
-    // Process photos
-    let processed = 0;
+    // Process all remaining photos (starting from 0 in the filtered list)
+    let processed = currentProcessed;
     for (const photo of photos) {
       try {
         const embedding = await embeddingsProcessor.calculateEmbedding(photo.base64);
         await db.addEmbedding(photo.id, embedding);
         processed++;
 
+        const remaining = totalToShow - processed;
         appStore.update(s => ({
           ...s,
           processingProgress: {
             ...s.processingProgress,
             current: processed,
-            message: `Processed ${processed}/${photos.length} photos...`
+            message: `${remaining} photo${remaining !== 1 ? 's' : ''} left...`
           }
         }));
+        saveProcessingState({ isProcessing: true, type: 'embedding', current: processed, total: totalToShow, message: `${remaining} photo${remaining !== 1 ? 's' : ''} left...` }, totalToShow);
       } catch (error) {
         console.error(`Error processing photo ${photo.id}:`, error);
       }
@@ -193,6 +284,7 @@ export async function calculateEmbeddings() {
         message: ''
       }
     }));
+    localStorage.removeItem('lensCleanerProcessingState');
 
     return processed;
   } catch (error) {
@@ -207,6 +299,7 @@ export async function calculateEmbeddings() {
         message: ''
       }
     }));
+    localStorage.removeItem('lensCleanerProcessingState');
     throw error;
   }
 }
@@ -225,6 +318,7 @@ export async function groupPhotos() {
       message: 'Grouping similar photos...'
     }
   }));
+  saveProcessingState({ isProcessing: true, type: 'grouping', current: 0, total: 0, message: 'Grouping similar photos...' });
 
   try {
     // Initialize processor if needed
@@ -247,6 +341,7 @@ export async function groupPhotos() {
           message: ''
         }
       }));
+      localStorage.removeItem('lensCleanerProcessingState');
       return 0;
     }
 
@@ -281,6 +376,7 @@ export async function groupPhotos() {
         message: ''
       }
     }));
+    localStorage.removeItem('lensCleanerProcessingState');
 
     return groups.length;
   } catch (error) {
@@ -295,6 +391,7 @@ export async function groupPhotos() {
         message: ''
       }
     }));
+    localStorage.removeItem('lensCleanerProcessingState');
     throw error;
   }
 }
@@ -303,6 +400,7 @@ export async function groupPhotos() {
 export async function clearAllData() {
   try {
     await db.clearAll();
+    localStorage.removeItem('lensCleanerProcessingState');
     appStore.update(s => ({
       ...s,
       photos: [],
@@ -313,6 +411,13 @@ export async function clearAllData() {
         photosWithEmbeddings: 0,
         totalGroups: 0,
         photosInGroups: 0
+      },
+      processingProgress: {
+        isProcessing: false,
+        type: null,
+        current: 0,
+        total: 0,
+        message: ''
       }
     }));
   } catch (error) {

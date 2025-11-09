@@ -20,6 +20,7 @@
   let autoProcessing = false;
   let showSettings = false;
   let processingStartTime = 0;
+  let processingStartProgress = 0; // Track progress at start for accurate time estimates
   let estimatedTimeRemaining = 0;
 
   // Settings
@@ -33,11 +34,55 @@
   let groupPhotosCache = new Map<string, Photo[]>();
   let ungroupedPhotos: Photo[] = [];
 
+  // Sorted photos for preview screen (most recent first)
+  $: sortedPhotos = [...$appStore.photos].sort((a, b) => {
+    const dateA = a.dateTaken ? new Date(a.dateTaken).getTime() : a.timestamp;
+    const dateB = b.dateTaken ? new Date(b.dateTaken).getTime() : b.timestamp;
+    return dateB - dateA; // Most recent first
+  });
+
   onMount(async () => {
     await initializeApp();
     settings.similarityThreshold = $appStore.settings.similarityThreshold;
     settings.timeWindowMinutes = $appStore.settings.timeWindowMinutes;
-    determineCurrentStep();
+    
+    // Check if we need to resume interrupted processing
+    if ($appStore.processingProgress.isProcessing) {
+      if ($appStore.processingProgress.type === 'embedding') {
+        currentStep = 'analyzing';
+        autoProcessing = true;
+        processingStartTime = Date.now();
+        processingStartProgress = $appStore.processingProgress.current; // Track where we're resuming from
+        // Auto-resume embedding processing
+        try {
+          await calculateEmbeddings();
+          await refreshData();
+          // Auto-start grouping after embeddings complete
+          await handleStartGrouping();
+          determineCurrentStep();
+        } catch (error) {
+          console.error('Resume error:', error);
+          autoProcessing = false;
+          determineCurrentStep();
+        }
+      } else if ($appStore.processingProgress.type === 'grouping') {
+        currentStep = 'grouping';
+        autoProcessing = true;
+        processingStartTime = Date.now();
+        processingStartProgress = $appStore.processingProgress.current; // Track where we're resuming from
+        // Auto-resume grouping
+        try {
+          await handleStartGrouping();
+          determineCurrentStep();
+        } catch (error) {
+          console.error('Resume error:', error);
+          autoProcessing = false;
+          determineCurrentStep();
+        }
+      }
+    } else {
+      determineCurrentStep();
+    }
   });
 
   function determineCurrentStep() {
@@ -60,6 +105,7 @@
 
     autoProcessing = true;
     processingStartTime = Date.now();
+    processingStartProgress = 0; // Start from 0 for new analysis
     currentStep = 'analyzing';
 
     try {
@@ -77,6 +123,8 @@
   async function handleStartGrouping() {
     if (!autoProcessing) {
       autoProcessing = true;
+      processingStartTime = Date.now();
+      processingStartProgress = 0; // Start from 0 for new grouping
     }
 
     currentStep = 'grouping';
@@ -166,6 +214,13 @@
     const photos = await Promise.all(group.photoIds.map(id => db.getPhoto(id)));
     const validPhotos = photos.filter(p => p !== undefined) as Photo[];
 
+    // Sort photos by dateTaken (most recent first)
+    validPhotos.sort((a, b) => {
+      const dateA = a.dateTaken ? new Date(a.dateTaken).getTime() : a.timestamp;
+      const dateB = b.dateTaken ? new Date(b.dateTaken).getTime() : b.timestamp;
+      return dateB - dateA; // Most recent first
+    });
+
     // Cache the result
     groupPhotosCache.set(group.id, validPhotos);
 
@@ -185,6 +240,13 @@
 
       // Filter photos that are NOT in any group
       ungroupedPhotos = allPhotos.filter(photo => !groupedPhotoIds.has(photo.id));
+      
+      // Sort ungrouped photos by dateTaken (most recent first)
+      ungroupedPhotos.sort((a, b) => {
+        const dateA = a.dateTaken ? new Date(a.dateTaken).getTime() : a.timestamp;
+        const dateB = b.dateTaken ? new Date(b.dateTaken).getTime() : b.timestamp;
+        return dateB - dateA; // Most recent first
+      });
     } catch (error) {
       console.error('Error loading ungrouped photos:', error);
       ungroupedPhotos = [];
@@ -196,21 +258,32 @@
     const elapsed = Date.now() - processingStartTime;
     const current = $appStore.processingProgress.current;
     const total = $appStore.processingProgress.total;
+    const progressMade = current - processingStartProgress; // Only count new progress
 
-    if (current > 0 && total > 0) {
-      const rate = current / elapsed; // items per ms
+    // Only calculate estimate if we've made progress since starting/resuming
+    if (progressMade > 0 && total > 0 && elapsed > 0) {
+      const rate = progressMade / elapsed; // items per ms (based on new progress only)
       const remaining = total - current;
       estimatedTimeRemaining = remaining / rate; // ms
+    } else {
+      estimatedTimeRemaining = 0; // Don't show estimate until we have progress
     }
   }
 
   function formatTimeEstimate(ms: number): string {
-    const seconds = Math.ceil(ms / 1000);
-    if (seconds < 60) return `${seconds}s`;
-    const minutes = Math.ceil(seconds / 60);
-    if (minutes < 60) return `${minutes}m`;
-    const hours = Math.ceil(minutes / 60);
-    return `${hours}h`;
+    const totalSeconds = Math.ceil(ms / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+
+    if (minutes === 0) {
+      return `${seconds} seconds`;
+    } else if (minutes < 60) {
+      return `${minutes} minute${minutes !== 1 ? 's' : ''} ${seconds} second${seconds !== 1 ? 's' : ''}`;
+    } else {
+      const hours = Math.floor(minutes / 60);
+      const remainingMinutes = minutes % 60;
+      return `${hours} hour${hours !== 1 ? 's' : ''} ${remainingMinutes} minute${remainingMinutes !== 1 ? 's' : ''}`;
+    }
   }
 
   // Filter groups by minimum size
@@ -224,7 +297,7 @@
       <h1 class="logo">📸 Lens Cleaner</h1>
       <p class="subtitle">Find and delete duplicate photos</p>
     </div>
-    {#if currentStep !== 'welcome'}
+    {#if currentStep === 'welcome'}
       <button onclick={() => showSettings = true} class="settings-btn">
         ⚙️ Settings
       </button>
@@ -292,28 +365,21 @@
             </p>
           </div>
           <div class="preview-actions">
-            <button onclick={handleRescan} class="btn btn-danger-outline">
-              🔄 Rescan Photos
-            </button>
             <button onclick={handleStartAnalysis} class="btn btn-primary">
-              🔍 Find Duplicates Now
+              🔍 Start the Scan
+            </button>
+            <button onclick={() => showSettings = true} class="btn btn-secondary">
+              ⚙️ Settings
             </button>
           </div>
         </div>
 
         <div class="photo-grid">
-          {#each $appStore.photos.slice(0, 50) as photo (photo.id)}
+          {#each sortedPhotos as photo (photo.id)}
             <div class="photo-preview">
               <img src="data:image/jpeg;base64,{photo.base64}" alt="Scanned" loading="lazy" />
             </div>
           {/each}
-          {#if $appStore.stats.totalPhotos > 50}
-            <div class="photo-preview more-indicator">
-              <div class="more-text">
-                +{$appStore.stats.totalPhotos - 50} more
-              </div>
-            </div>
-          {/if}
         </div>
       </div>
 
@@ -329,7 +395,11 @@
           {/if}
         </h2>
         <p class="processing-text">
-          This may take a few moments. We're using AI to compare your photos.
+          {#if $appStore.processingProgress.message}
+            {$appStore.processingProgress.message}
+          {:else}
+            This may take a few moments. We're using AI to compare your photos.
+          {/if}
         </p>
 
         <div class="stats-grid">
@@ -338,20 +408,28 @@
             <div class="stat-label">Photos Scanned</div>
           </div>
           <div class="stat-box">
-            <div class="stat-number">{$appStore.stats.photosWithEmbeddings}</div>
+            <div class="stat-number">
+              {#if $appStore.processingProgress.isProcessing}
+                {$appStore.processingProgress.current}
+              {:else}
+                {$appStore.stats.photosWithEmbeddings}
+              {/if}
+            </div>
             <div class="stat-label">Photos Analyzed</div>
           </div>
         </div>
 
-        {#if $appStore.processingProgress.isProcessing}
+        {#if $appStore.processingProgress.isProcessing && $appStore.processingProgress.total > 0}
           <div class="progress-container">
-            <div class="progress-bar">
-              <div class="progress-fill" style="width: {($appStore.processingProgress.current / $appStore.processingProgress.total * 100)}%"></div>
+            <div class="progress-bar-wrapper">
+              <span class="progress-percentage">
+                {Math.floor(($appStore.processingProgress.current / $appStore.processingProgress.total * 100))}%
+              </span>
+              <div class="progress-bar">
+                <div class="progress-fill" style="width: {($appStore.processingProgress.current / $appStore.processingProgress.total * 100)}%"></div>
+              </div>
             </div>
             <div class="progress-info">
-              <span class="progress-text">
-                {$appStore.processingProgress.current} / {$appStore.processingProgress.total}
-              </span>
               {#if estimatedTimeRemaining > 0}
                 <span class="time-estimate">
                   ~{formatTimeEstimate(estimatedTimeRemaining)} remaining
@@ -360,6 +438,11 @@
             </div>
           </div>
         {/if}
+
+        <div class="processing-note">
+          <span class="note-icon">💡</span>
+          <span class="note-text">You can background this tab or close it. Processing continues and progress is saved.</span>
+        </div>
       </div>
 
     {:else if currentStep === 'reviewing'}
@@ -452,18 +535,11 @@
                 <p class="section-subtitle">These photos have no duplicates</p>
               </div>
               <div class="ungrouped-grid">
-                {#each ungroupedPhotos.slice(0, 100) as photo (photo.id)}
+                {#each ungroupedPhotos as photo (photo.id)}
                   <div class="ungrouped-photo">
                     <img src="data:image/jpeg;base64,{photo.base64}" alt="Unique" loading="lazy" />
                   </div>
                 {/each}
-                {#if ungroupedPhotos.length > 100}
-                  <div class="ungrouped-photo more-indicator">
-                    <div class="more-text">
-                      +{ungroupedPhotos.length - 100} more
-                    </div>
-                  </div>
-                {/if}
               </div>
             </div>
           {/if}
@@ -537,7 +613,7 @@
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick={() => showSettings = false}>Cancel</button>
-        <button class="btn btn-primary" onclick={handleSaveSettings}>Save & Reindex</button>
+        <button class="btn btn-primary" onclick={handleSaveSettings}>Save</button>
       </div>
     </div>
   </div>
@@ -796,7 +872,7 @@
   /* Processing Screen */
   .processing-screen {
     text-align: center;
-    padding: 60px 20px;
+    padding: 20px 10px;
   }
 
   .spinner {
@@ -858,13 +934,26 @@
     margin: 32px auto 0;
   }
 
+  .progress-bar-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .progress-percentage {
+    font-size: 18px;
+    font-weight: 700;
+    color: #667eea;
+    min-width: 50px;
+  }
+
   .progress-bar {
-    width: 100%;
+    flex: 1;
     height: 12px;
     background: #e2e8f0;
     border-radius: 6px;
     overflow: hidden;
-    margin-bottom: 12px;
   }
 
   .progress-fill {
@@ -876,7 +965,7 @@
 
   .progress-info {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-end;
     align-items: center;
   }
 
@@ -890,6 +979,29 @@
     font-size: 14px;
     color: #667eea;
     font-weight: 600;
+  }
+
+  .processing-note {
+    margin-top: 48px;
+    padding: 16px 24px;
+    background: #f0f9ff;
+    border: 1px solid #bae6fd;
+    border-radius: 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    max-width: 700px;
+  }
+
+  .note-icon {
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+
+  .note-text {
+    font-size: 14px;
+    color: #0369a1;
+    line-height: 1.5;
   }
 
   /* No Duplicates */

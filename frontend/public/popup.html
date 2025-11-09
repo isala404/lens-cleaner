@@ -125,13 +125,32 @@
     }
 
     .btn-danger-outline {
-      background: rgba(239, 68, 68, 0.1);
-      color: #ef4444;
-      border: 2px solid #ef4444;
+      background: rgba(239, 68, 68, 0.9);
+      color: white;
+      border: 2px solid rgba(239, 68, 68, 0.9);
+      font-weight: 700;
+      backdrop-filter: blur(10px);
     }
 
     .btn-danger-outline:hover:not(:disabled) {
-      background: rgba(239, 68, 68, 0.2);
+      background: rgba(220, 38, 38, 0.95);
+      border-color: rgba(220, 38, 38, 0.95);
+      color: white;
+    }
+
+    .btn-danger {
+      background: rgba(239, 68, 68, 0.95);
+      color: white;
+      border: 2px solid rgba(239, 68, 68, 0.95);
+      font-weight: 700;
+      font-size: 18px;
+      padding: 18px 24px;
+    }
+
+    .btn-danger:hover:not(:disabled) {
+      background: rgba(220, 38, 38, 1);
+      border-color: rgba(220, 38, 38, 1);
+      color: white;
     }
 
     .message {
@@ -143,6 +162,7 @@
       text-align: center;
       backdrop-filter: blur(10px);
       border: 1px solid rgba(255, 255, 255, 0.3);
+      line-height: 1.6;
     }
 
     .message.success {
@@ -202,7 +222,7 @@
       <span class="stat-label">📷 Photos Scanned</span>
       <span class="stat-value" id="totalPhotos">0</span>
     </div>
-    <div class="stat-row">
+    <div class="stat-row" id="groupsRow">
       <span class="stat-label">🔍 Duplicate Groups</span>
       <span class="stat-value" id="totalGroups">0</span>
     </div>
@@ -225,6 +245,9 @@
     <div class="actions">
       <button id="startScan" class="btn btn-primary">
         🔍 Find Duplicates
+      </button>
+      <button id="clearData" class="btn btn-danger-outline hidden">
+        🗑️ Clear All & Start Fresh
       </button>
     </div>
 

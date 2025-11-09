@@ -12,6 +12,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadStats();
   await checkCurrentTab();
   setupEventListeners();
+  // Check for active scanning with a small delay to ensure content scripts are ready
+  setTimeout(async () => {
+    await checkForActiveScanning(); // Check if scanning is active on any tab
+  }, 100);
   startStatusPolling();
 });
 
@@ -29,6 +33,8 @@ async function loadStats() {
       document.getElementById('totalPhotos').textContent = stats.totalPhotos;
       document.getElementById('totalGroups').textContent = stats.totalGroups;
 
+      // Re-check tab to update UI based on scan status
+      await checkCurrentTab();
       updateButtonStates();
     }
   } catch (error) {
@@ -41,39 +47,74 @@ async function loadStats() {
  */
 function updateButtonStates() {
   const startBtn = document.getElementById('startScan');
+  const clearBtn = document.getElementById('clearData');
   const dashboardBtn = document.getElementById('openDashboard');
+  const messageEl = document.getElementById('message');
+  const groupsRow = document.getElementById('groupsRow');
 
   if (!startBtn) return;
 
   if (isProcessing) {
-    startBtn.disabled = true;
-    startBtn.textContent = '⏳ Scanning...';
+    // Ensure button is visible and configured for stopping
+    startBtn.classList.remove('hidden');
+    startBtn.disabled = false;
+    startBtn.textContent = '⏹ Stop Scanning';
+    startBtn.classList.remove('btn-primary', 'btn-secondary');
+    startBtn.classList.add('btn-danger');
+    if (clearBtn) {
+      clearBtn.classList.add('hidden');
+    }
     if (dashboardBtn) {
       dashboardBtn.style.display = 'none';
     }
+    // Hide duplicate groups row during scanning
+    if (groupsRow) {
+      groupsRow.classList.add('hidden');
+    }
+    // Show warning about not closing extension
+    if (messageEl) {
+      messageEl.textContent = '⚠️ Please keep this extension open or scanning will stop!';
+      messageEl.className = 'message info';
+      messageEl.classList.remove('hidden');
+    }
   } else if (hasScannedPhotos) {
-    // Has scanned photos - show "View Results" as primary and "Rescan" as secondary
-    startBtn.classList.remove('btn-primary');
-    startBtn.classList.add('btn-danger-outline');
-    startBtn.disabled = false;
-    startBtn.textContent = '⚠️ Rescan Photos';
+    startBtn.classList.add('hidden');
+    if (clearBtn) {
+      clearBtn.classList.remove('hidden');
+    }
     if (dashboardBtn) {
       dashboardBtn.style.display = 'block';
       dashboardBtn.classList.remove('btn-secondary');
       dashboardBtn.classList.add('btn-primary');
-      dashboardBtn.textContent = '📊 View Results';
+      dashboardBtn.textContent = '📊 Review Duplicates';
+    }
+    // Show duplicate groups row when done
+    if (groupsRow) {
+      groupsRow.classList.remove('hidden');
+    }
+    // Hide message when not processing
+    if (messageEl) {
+      messageEl.classList.add('hidden');
     }
   } else {
-    // No scanned photos - show "Find Duplicates" as primary
-    startBtn.classList.remove('btn-danger-outline');
+    // No scanned photos - show "Find Duplicates" as primary, hide "View Results"
+    startBtn.classList.remove('hidden', 'btn-danger-outline', 'btn-secondary', 'btn-danger');
     startBtn.classList.add('btn-primary');
     startBtn.disabled = false;
     startBtn.textContent = '🔍 Find Duplicates';
+    if (clearBtn) {
+      clearBtn.classList.add('hidden');
+    }
     if (dashboardBtn) {
-      dashboardBtn.style.display = 'block';
-      dashboardBtn.classList.remove('btn-primary');
-      dashboardBtn.classList.add('btn-secondary');
-      dashboardBtn.textContent = '📊 View Results';
+      dashboardBtn.style.display = 'none';
+    }
+    // Show duplicate groups row in default state
+    if (groupsRow) {
+      groupsRow.classList.remove('hidden');
+    }
+    // Hide message when not processing
+    if (messageEl) {
+      messageEl.classList.add('hidden');
     }
   }
 }
@@ -88,7 +129,12 @@ async function checkCurrentTab() {
 
     const isGooglePhotos = tab.url && tab.url.includes('photos.google.com');
 
-    if (isGooglePhotos) {
+    // If we have scanned photos, always show the onGooglePhotos section (even if not on Google Photos)
+    // This allows users to review duplicates from anywhere
+    if (hasScannedPhotos) {
+      document.getElementById('notOnGooglePhotos').classList.add('hidden');
+      document.getElementById('onGooglePhotos').classList.remove('hidden');
+    } else if (isGooglePhotos) {
       document.getElementById('notOnGooglePhotos').classList.add('hidden');
       document.getElementById('onGooglePhotos').classList.remove('hidden');
     } else {
@@ -119,9 +165,18 @@ function setupEventListeners() {
     });
   });
 
-  // Start scan
+  // Start/Stop scan
   document.getElementById('startScan').addEventListener('click', async () => {
-    await startScan();
+    if (isProcessing) {
+      await stopScan();
+    } else {
+      await startScan();
+    }
+  });
+
+  // Clear all data
+  document.getElementById('clearData').addEventListener('click', async () => {
+    await handleClearData();
   });
 }
 
@@ -157,6 +212,80 @@ async function ensureContentScriptLoaded(tabId) {
 }
 
 /**
+ * Handle clearing all data
+ */
+async function handleClearData() {
+  const confirmed = confirm(
+    'This will remove everything stored by Lens Cleaner.\n\n' +
+    'Think of it like clearing out your desk to start fresh.\n\n' +
+    'You\'ll need to scan your photos again from Google Photos.\n\n' +
+    'Is this what you want to do?'
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    await chrome.runtime.sendMessage({ action: 'clearAllData' });
+    hasScannedPhotos = false;
+    
+    // Update stats display immediately
+    document.getElementById('totalPhotos').textContent = '0';
+    document.getElementById('totalGroups').textContent = '0';
+    
+    // Reload stats to ensure consistency
+    await loadStats();
+    
+    // Ensure onGooglePhotos section is visible if user is on Google Photos
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const isGooglePhotos = tab.url && tab.url.includes('photos.google.com');
+    
+    if (isGooglePhotos) {
+      document.getElementById('notOnGooglePhotos').classList.add('hidden');
+      document.getElementById('onGooglePhotos').classList.remove('hidden');
+    }
+    
+    updateButtonStates();
+  } catch (error) {
+    console.error('Error clearing data:', error);
+    showMessage('Oops! Something went wrong while clearing.', 'error');
+  }
+}
+
+/**
+ * Stop scanning
+ */
+async function stopScan() {
+  // If we don't have currentTab but scanning is active, find the scanning tab
+  if (!currentTab && isProcessing) {
+    await checkForActiveScanning();
+  }
+  
+  if (!currentTab) {
+    showMessage('Could not find the scanning tab.', 'error');
+    return;
+  }
+  
+  try {
+    await chrome.tabs.sendMessage(currentTab.id, {
+      action: 'stopScraping'
+    });
+    isProcessing = false;
+    showMessage('Scanning stopped. You can review what was found so far.', 'info');
+    await loadStats();
+    updateButtonStates();
+  } catch (error) {
+    console.error('Error stopping scan:', error);
+    // Try to find the scanning tab again
+    await checkForActiveScanning();
+    if (isProcessing) {
+      showMessage('Could not stop scanning. Please try again.', 'error');
+    }
+  }
+}
+
+/**
  * Start scanning
  */
 async function startScan() {
@@ -166,45 +295,20 @@ async function startScan() {
   }
 
   if (isProcessing) {
-    showMessage('Already processing...', 'info');
+    showMessage('Already scanning your photos...', 'info');
     return;
-  }
-
-  // If already has photos, confirm rescan with warning
-  if (hasScannedPhotos) {
-    const confirmed = confirm(
-      '⚠️ WARNING: This will delete all currently scanned photos and groups.\n\n' +
-      'You will need to scan from Google Photos again and re-analyze everything.\n\n' +
-      'Consider using "Reindex" from the dashboard instead if you just want to adjust settings.\n\n' +
-      'Continue with rescan?'
-    );
-
-    if (!confirmed) {
-      return;
-    }
-
-    // Clear all data before rescanning
-    try {
-      await chrome.runtime.sendMessage({ action: 'clearAllData' });
-      hasScannedPhotos = false;
-      await loadStats();
-    } catch (error) {
-      console.error('Error clearing data:', error);
-      showMessage('Failed to clear data', 'error');
-      return;
-    }
   }
 
   try {
     isProcessing = true;
-    showMessage('Starting...', 'info');
+    showMessage('Getting ready to scan...', 'info');
     updateButtonStates();
 
     // Ensure content script is loaded (fixes bug with already-opened tabs)
     const scriptLoaded = await ensureContentScriptLoaded(currentTab.id);
 
     if (!scriptLoaded) {
-      showMessage('Please reload this Google Photos tab and try again', 'error');
+      showMessage('Please refresh this Google Photos page and try again', 'error');
       isProcessing = false;
       updateButtonStates();
       return;
@@ -224,13 +328,13 @@ async function startScan() {
     });
 
     if (response && response.status === 'started') {
-      showMessage('Scanning your photos...', 'success');
+      // Message is now handled in updateButtonStates() when isProcessing is true
       updateButtonStates();
       console.log('Scan started successfully');
     }
   } catch (error) {
     console.error('Error starting scan:', error);
-    showMessage('Failed to start. Please make sure this is Google Photos.', 'error');
+    showMessage('Could not start. Make sure you\'re on Google Photos.', 'error');
     isProcessing = false;
     updateButtonStates();
   }
@@ -256,32 +360,148 @@ function showMessage(text, type = 'info') {
 }
 
 /**
- * Poll for scanning status
+ * Check a specific tab for active scanning
+ */
+async function checkTabForScanning(tab) {
+  if (!tab.url || !tab.url.includes('photos.google.com')) {
+    return false;
+  }
+  
+  try {
+    console.log('Checking tab', tab.id, 'for active scanning');
+    
+    // First try to ping the content script to see if it's loaded
+    try {
+      await chrome.tabs.sendMessage(tab.id, { action: 'ping' });
+    } catch (pingError) {
+      // Content script not loaded, try to inject it
+      console.log('Content script not loaded on tab', tab.id, ', attempting to inject...');
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          files: ['content-scraper.js']
+        });
+        // Wait a bit for script to initialize
+        await new Promise(resolve => setTimeout(resolve, 300));
+      } catch (injectError) {
+        console.log('Could not inject content script on tab', tab.id);
+        return false;
+      }
+    }
+    
+    // Now check for scraping status
+    const response = await chrome.tabs.sendMessage(tab.id, {
+      action: 'getScrapingStatus'
+    });
+    
+    console.log('Response from tab', tab.id, ':', response);
+    
+    if (response && response.isActive) {
+      // Found active scanning! Update state
+      console.log('✅ Found active scanning on tab:', tab.id);
+      isProcessing = true;
+      currentTab = tab;
+      
+      // Ensure onGooglePhotos section is visible
+      document.getElementById('notOnGooglePhotos').classList.add('hidden');
+      document.getElementById('onGooglePhotos').classList.remove('hidden');
+      
+      // Update button states
+      updateButtonStates();
+      
+      // Update photo count if available
+      if (response.progress) {
+        const photoCount = response.progress.totalScraped || 0;
+        document.getElementById('totalPhotos').textContent = photoCount;
+      }
+      
+      return true; // Found it!
+    }
+    
+    return false;
+  } catch (error) {
+    // Tab might not have content script loaded, skip it
+    console.log('Tab', tab.id, 'error:', error.message);
+    return false;
+  }
+}
+
+/**
+ * Check all Google Photos tabs for active scanning
+ * This is called on popup initialization to restore state if popup was closed
+ */
+async function checkForActiveScanning() {
+  try {
+    // First check the current tab (most likely to be scanning)
+    if (currentTab) {
+      const found = await checkTabForScanning(currentTab);
+      if (found) {
+        return;
+      }
+    }
+    
+    // If not found, check all tabs
+    const tabs = await chrome.tabs.query({});
+    console.log('Checking for active scanning across', tabs.length, 'tabs');
+    
+    // Check each Google Photos tab for active scanning
+    for (const tab of tabs) {
+      const found = await checkTabForScanning(tab);
+      if (found) {
+        return; // Found it, no need to check others
+      }
+    }
+    
+    console.log('No active scanning found');
+  } catch (error) {
+    console.error('Error checking for active scanning:', error);
+  }
+}
+
+/**
+ * Poll for scanning status and update photo count in real-time
  */
 function startStatusPolling() {
+  let checkCounter = 0;
+  
   setInterval(async () => {
-    if (!currentTab) return;
+    // If we know scanning is active, check the current tab frequently
+    if (isProcessing && currentTab) {
+      try {
+        const response = await chrome.tabs.sendMessage(currentTab.id, {
+          action: 'getScrapingStatus'
+        });
 
-    try {
-      const response = await chrome.tabs.sendMessage(currentTab.id, {
-        action: 'getScrapingStatus'
-      });
-
-      if (response) {
-        if (response.isActive && !isProcessing) {
-          // Scan is running but we didn't know
-          isProcessing = true;
-          updateButtonStates();
-        } else if (!response.isActive && isProcessing) {
-          // Scan finished
-          isProcessing = false;
-          showMessage('Scan complete! Open the dashboard to continue.', 'success');
-          // Refresh stats
-          await loadStats();
+        if (response) {
+          if (!response.isActive && isProcessing) {
+            // Scan finished
+            isProcessing = false;
+            showMessage('All done! Click "Review Duplicates" to see what we found.', 'success');
+            // Refresh stats
+            await loadStats();
+            updateButtonStates();
+          }
+          
+          // Update photo count in real-time during scanning
+          if (response.isActive && response.progress) {
+            const photoCount = response.progress.totalScraped || 0;
+            document.getElementById('totalPhotos').textContent = photoCount;
+          }
         }
+      } catch (error) {
+        // Tab might have been closed or navigated away
+        // Check all tabs again to find the scanning tab
+        await checkForActiveScanning();
       }
-    } catch (error) {
-      // Content script not loaded or tab closed - this is normal
+    } else if (!isProcessing) {
+      // Periodically check if scanning started on any tab
+      // This handles the case where popup was closed and reopened
+      // Check every 2 seconds (every 4th poll) to avoid excessive tab queries
+      checkCounter++;
+      if (checkCounter >= 4) {
+        checkCounter = 0;
+        await checkForActiveScanning();
+      }
     }
-  }, 1000); // Poll every second
+  }, 500); // Poll twice per second for smoother updates
 }

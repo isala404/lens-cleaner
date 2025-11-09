@@ -46,7 +46,7 @@ export class EmbeddingsProcessor {
 
         featureExtractor = await pipeline(
           'image-feature-extraction',
-          'Xenova/clip-vit-base-patch32'
+          'Xenova/dinov2-small'
         ) as FeatureExtractionPipeline;
 
         console.log('CLIP model loaded successfully');
