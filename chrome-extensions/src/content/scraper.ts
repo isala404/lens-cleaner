@@ -10,6 +10,14 @@ let scrapingProgress: {
   status: string;
 } | null = null;
 
+let isDeletionActive = false;
+let deletionProgress: {
+  total: number;
+  selected: number;
+  status: string;
+  message: string;
+} | null = null;
+
 // Listen for messages from popup/service worker
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log('📸 Lens Cleaner received message:', message.action);
@@ -28,6 +36,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendResponse({
       isActive: isScrapingActive,
       progress: scrapingProgress
+    });
+  } else if (message.action === 'startDeletion') {
+    console.log('🗑️ Starting deletion workflow with photo IDs:', message.photoIds);
+    startDeletionWorkflow(message.photoIds || []);
+    sendResponse({ status: 'started' });
+  } else if (message.action === 'getDeletionStatus') {
+    sendResponse({
+      isActive: isDeletionActive,
+      progress: deletionProgress
     });
   }
   return true; // Keep message channel open for async response
@@ -328,16 +345,23 @@ async function sendBatchToServiceWorker(photos: any[]) {
  */
 function findScrollContainer(): Element {
   // Try different selectors for Google Photos
-  const selectors = ['[jsname="xmrwfb"]', '[role="main"]'];
+  // Album view inner scroll area is checked first (for deletion workflow)
+  const selectors = [
+    '[jsname="bN97Pc"] .Purf9b', // Album view inner scroll area
+    '[jsname="xmrwfb"]',          // Primary photos view main content area
+    '[role="main"]'
+  ];
 
   for (const selector of selectors) {
     const element = document.querySelector(selector);
     if (element && element.scrollHeight > element.clientHeight) {
+      console.log(`Found scrollable container with selector: "${selector}"`);
       return element;
     }
   }
 
   // Fallback to document scrolling
+  console.log("No specific container found, falling back to the main document.");
   return document.scrollingElement || document.documentElement;
 }
 
@@ -453,6 +477,269 @@ function hideProgressOverlay() {
   const overlay = document.getElementById('lens-cleaner-overlay');
   if (overlay) {
     overlay.remove();
+  }
+}
+
+/**
+ * Deletion Workflow Functions
+ */
+
+async function startDeletionWorkflow(photoIds: string[]) {
+  if (isDeletionActive) {
+    console.log('⚠️ Deletion workflow already in progress');
+    return;
+  }
+
+  isDeletionActive = true;
+  deletionProgress = {
+    total: photoIds.length,
+    selected: 0,
+    status: 'running',
+    message: 'Initializing...'
+  };
+
+  showDeletionProgressBanner();
+
+  try {
+    // Check if we're on the albums page
+    if (!window.location.href.includes('photos.google.com/albums')) {
+      updateDeletionProgress('Please navigate to the albums page', 0);
+      await sleep(2000);
+      isDeletionActive = false;
+      hideDeletionProgressBanner();
+      return;
+    }
+
+    // Step 1: Click create album button
+    updateDeletionProgress('Looking for create album button...', 0);
+    await sleep(1000);
+
+    const createButton = document.querySelector('c-wiz > div.h8plyb.HnzzId > c-wiz > div > div.eReC4e.FbgB9 > div > div > div.DNAsC.G6iPcb.aSMlbb > span > button > div') as HTMLElement;
+    if (!createButton) {
+      updateDeletionProgress('Error: Could not find create album button', 0);
+      await sleep(3000);
+      isDeletionActive = false;
+      hideDeletionProgressBanner();
+      return;
+    }
+
+    updateDeletionProgress('Clicking create album button...', 0);
+    createButton.click();
+    await sleep(2000);
+
+    // Step 2: Click to add images view
+    updateDeletionProgress('Opening add images view...', 0);
+    await sleep(5000);
+    const addImagesButton = document.querySelector('div > div.yKzHyd > span > div > div > div:nth-child(2) > div > div > div.FHHhzf > div:nth-child(3) > div > div > div') as HTMLElement;
+    if (!addImagesButton) {
+      updateDeletionProgress('Error: Could not find add images button', 0);
+      await sleep(3000);
+      isDeletionActive = false;
+      hideDeletionProgressBanner();
+      return;
+    }
+
+    addImagesButton.click();
+    await sleep(5000);
+
+    // Step 3: Select photos marked for deletion
+    updateDeletionProgress('Searching for photos to delete...', 0);
+    await selectPhotosForDeletion(photoIds);
+
+    // Step 4: Click Done button
+    updateDeletionProgress('Saving album...', deletionProgress.selected);
+    await sleep(1000);
+
+    const doneButton = document.querySelector('#yDmH0d > div.uW2Fw-Sx9Kwc.uW2Fw-qON5Qe-FoKg4d-Sx9Kwc-fZiSAe.yaahMe.V639qd.uW2Fw-Sx9Kwc-OWXEXe-n9oEIb.jap5td.UIMz.QaJAKf.uW2Fw-Sx9Kwc-OWXEXe-FNFY6c > div.uW2Fw-wzTsW.O4g5Md.RsAcmc.iWO5td > div > div > div > div > div > div > div.JzcJRd.oM5Pic > span > div.nyu5jc > div:nth-child(2) > button') as HTMLElement;
+    if (doneButton) {
+      doneButton.click();
+      await sleep(2000);
+    }
+
+    const albumTitle = document.querySelector("div > div.mIFvyc > div > div.AUyNN > div > div.Yyy4Hc > div > textarea") as HTMLTextAreaElement;
+    if (albumTitle) {
+      albumTitle.value = "TO_BE_DELETE_" + new Date().toISOString();
+      albumTitle.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    // Step 5: Show completion message
+    updateDeletionProgress(`Album created with ${deletionProgress.selected} photos! Please review and delete them.`, deletionProgress.selected);
+    deletionProgress.status = 'completed';
+    await sleep(5000);
+
+  } catch (error) {
+    console.error('Deletion workflow error:', error);
+    updateDeletionProgress('Error during deletion workflow', deletionProgress?.selected || 0);
+    deletionProgress!.status = 'error';
+    await sleep(3000);
+  } finally {
+    isDeletionActive = false;
+    hideDeletionProgressBanner();
+  }
+}
+
+async function selectPhotosForDeletion(photoIds: string[]) {
+  const scrollContainer = findScrollContainer();
+  let selectedCount = 0;
+  let staleScrollCount = 0;
+  const maxStaleScrolls = 5;
+  const scrollDelay = 2000;
+  const apiRequestDelay = 150;
+  
+  // Track all photo IDs we've seen (to avoid processing twice)
+  const processedIds = new Set<string>();
+  
+  // Track which target photo IDs we still need to find
+  const remainingPhotoIds = new Set(photoIds);
+
+  updateDeletionProgress(`Selecting photos (0/${photoIds.length})...`, 0);
+
+  while (staleScrollCount < maxStaleScrolls && remainingPhotoIds.size > 0) {
+    let foundNewPhotosInPass = false;
+
+    // Find all photo containers currently rendered
+    const photoContainers = document.querySelectorAll('div[jslog*="track:click; 8:"]');
+
+    for (const container of photoContainers) {
+      const jslog = container.getAttribute('jslog');
+      const match = jslog?.match(/8:(AF1Qip[a-zA-Z0-9_-]+)/);
+
+      if (match && match[1]) {
+        const photoId = match[1];
+
+        // Skip if already processed this photo ID
+        if (processedIds.has(photoId)) {
+          continue;
+        }
+
+        // Mark as processed
+        processedIds.add(photoId);
+        foundNewPhotosInPass = true;
+
+        // Check if this photo is in our target list
+        if (remainingPhotoIds.has(photoId)) {
+          console.log(`[SELECTING] ID: ${photoId}`);
+          const checkbox = container.querySelector('div.QcpS9c.ckGgle') as HTMLElement;
+          if (checkbox) {
+            checkbox.click();
+            selectedCount++;
+            remainingPhotoIds.delete(photoId);
+            updateDeletionProgress(
+              `Selecting photos (${selectedCount}/${photoIds.length})... ${remainingPhotoIds.size} remaining`, 
+              selectedCount
+            );
+            await sleep(apiRequestDelay);
+          } else {
+            console.warn(`Could not find checkbox for ID: ${photoId}`);
+          }
+        }
+      }
+    }
+
+    // Update stale scroll count based on whether we found new photos
+    if (foundNewPhotosInPass) {
+      staleScrollCount = 0; // Reset because we found new items
+    } else {
+      staleScrollCount++;
+      console.log(`No new photos found in this pass. Stale pass count: ${staleScrollCount}/${maxStaleScrolls}`);
+    }
+
+    // Stop if we selected all target photos
+    if (remainingPhotoIds.size === 0) {
+      console.log(`All ${photoIds.length} target photos have been selected!`);
+      break;
+    }
+
+    // Scroll down to load more photos
+    scrollContainer.scrollBy({ top: scrollContainer.clientHeight, behavior: 'smooth' });
+    await sleep(scrollDelay);
+  }
+
+  // Log final results
+  console.log(`--- SELECTION COMPLETE ---`);
+  console.log(`Processed a total of ${processedIds.size} unique photos.`);
+  console.log(`Selected ${selectedCount} photos for deletion.`);
+  if (remainingPhotoIds.size > 0) {
+    console.warn(`Could not find ${remainingPhotoIds.size} photos:`, Array.from(remainingPhotoIds));
+  }
+
+  deletionProgress!.selected = selectedCount;
+}
+
+function showDeletionProgressBanner() {
+  // Remove existing banner if any
+  hideDeletionProgressBanner();
+
+  const banner = document.createElement('div');
+  banner.id = 'lens-cleaner-deletion-banner';
+  banner.style.cssText = `
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 20px 24px;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    z-index: 999999;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    min-width: 320px;
+    max-width: 400px;
+    backdrop-filter: blur(10px);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+  `;
+
+  banner.innerHTML = `
+    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+      <div class="spinner" style="
+        width: 16px;
+        height: 16px;
+        border: 2px solid rgba(255, 255, 255, 0.3);
+        border-top-color: white;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      "></div>
+      <div style="font-size: 16px; font-weight: 600;">🗑️ Lens Cleaner</div>
+    </div>
+    <div id="deletion-progress-message" style="font-size: 13px; opacity: 0.95; margin-left: 28px;">
+      Initializing...
+    </div>
+    <div id="deletion-progress-count" style="font-size: 12px; opacity: 0.85; margin-left: 28px; margin-top: 4px;">
+      0 photos selected
+    </div>
+    <style>
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+    </style>
+  `;
+
+  document.body.appendChild(banner);
+}
+
+function updateDeletionProgress(message: string, count: number) {
+  const messageElement = document.getElementById('deletion-progress-message');
+  if (messageElement) {
+    messageElement.textContent = message;
+  }
+
+  const countElement = document.getElementById('deletion-progress-count');
+  if (countElement) {
+    countElement.textContent = `${count} photos selected`;
+  }
+
+  if (deletionProgress) {
+    deletionProgress.message = message;
+    deletionProgress.selected = count;
+  }
+}
+
+function hideDeletionProgressBanner() {
+  const banner = document.getElementById('lens-cleaner-deletion-banner');
+  if (banner) {
+    banner.remove();
   }
 }
 

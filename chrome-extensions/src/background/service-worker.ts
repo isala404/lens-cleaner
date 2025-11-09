@@ -105,6 +105,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ success: true, message: 'Scan initiated' });
       return false; // Response sent synchronously
 
+    case 'initiateDeletion':
+      console.log('🗑️ Received initiateDeletion for tab:', message.tabId);
+      // Start the deletion process asynchronously
+      handleInitiateDeletion(message.tabId, message.photoIds)
+        .catch(error => console.error('🔴 Error in handleInitiateDeletion:', error));
+      // Respond immediately
+      sendResponse({ success: true, message: 'Deletion workflow initiated' });
+      return false; // Response sent synchronously
+
     default:
       sendResponse({ success: false, error: 'Unknown action' });
       return false;
@@ -361,6 +370,59 @@ async function handleInitiateScan(tabId: number, options: any = {}) {
       reject(new Error('Timeout waiting for tab to load'));
     }, 30000);
   });
+}
+
+/**
+ * Initiate deletion workflow on a tab
+ * This opens Google Photos albums page and starts the deletion workflow
+ */
+async function handleInitiateDeletion(tabId: number, photoIds: string[]) {
+  console.log('🗑️ Service worker initiating deletion workflow for', photoIds.length, 'photos');
+
+  try {
+    // Update the tab to navigate to albums page
+    await chrome.tabs.update(tabId, {
+      url: 'https://photos.google.com/albums'
+    });
+
+    // Wait for the tab to load
+    return new Promise((resolve, reject) => {
+      const listener = (updatedTabId: number, changeInfo: chrome.tabs.TabChangeInfo, tab: chrome.tabs.Tab) => {
+        if (updatedTabId === tabId && changeInfo.status === 'complete') {
+          console.log('🗑️ Albums page loaded, sending startDeletion message...');
+
+          // Remove listener
+          chrome.tabs.onUpdated.removeListener(listener);
+
+          // Wait for content script to initialize
+          setTimeout(async () => {
+            try {
+              await chrome.tabs.sendMessage(tabId, {
+                action: 'startDeletion',
+                photoIds: photoIds
+              });
+              console.log('🗑️ Deletion message sent successfully');
+              resolve(undefined);
+            } catch (error) {
+              console.error('🗑️ Error sending message to content script:', error);
+              reject(error);
+            }
+          }, 2000);
+        }
+      };
+
+      chrome.tabs.onUpdated.addListener(listener);
+
+      // Timeout after 30 seconds
+      setTimeout(() => {
+        chrome.tabs.onUpdated.removeListener(listener);
+        reject(new Error('Timeout waiting for albums page to load'));
+      }, 30000);
+    });
+  } catch (error) {
+    console.error('🗑️ Error in handleInitiateDeletion:', error);
+    throw error;
+  }
 }
 
 console.log('Service worker loaded');

@@ -426,7 +426,7 @@ export async function clearAllData() {
   }
 }
 
-// Delete selected photos
+// Delete selected photos from local database
 export async function deleteSelectedPhotos() {
   const state = get(appStore);
   const photoIds = Array.from(state.selectedPhotos);
@@ -444,6 +444,37 @@ export async function deleteSelectedPhotos() {
     await refreshData();
   } catch (error) {
     console.error('Error deleting photos:', error);
+    throw error;
+  }
+}
+
+// Delete selected photos from Google Photos
+export async function deleteFromGooglePhotos() {
+  const state = get(appStore);
+  const photoIds = Array.from(state.selectedPhotos);
+
+  if (photoIds.length === 0) {
+    return;
+  }
+
+  try {
+    // Create a new tab with Google Photos albums page
+    const tab = await chrome.tabs.create({
+      url: 'https://photos.google.com/albums',
+      active: true
+    });
+
+    // Wait for tab to be created
+    if (tab.id) {
+      // Send message to service worker to initiate deletion workflow
+      await chrome.runtime.sendMessage({
+        action: 'initiateDeletion',
+        tabId: tab.id,
+        photoIds: photoIds
+      });
+    }
+  } catch (error) {
+    console.error('Error initiating Google Photos deletion:', error);
     throw error;
   }
 }
