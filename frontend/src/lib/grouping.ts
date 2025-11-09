@@ -38,7 +38,7 @@ export class GroupingProcessor {
   async groupSimilarPhotos(
     photos: Photo[],
     embeddingMap: Map<string, number[]>,
-    similarityThreshold: number = 0.85,
+    similarityThreshold: number = 0.6,
     timeWindowMinutes: number = 60
   ): Promise<PhotoGroup[]> {
     console.log(`Grouping ${photos.length} photos...`);
@@ -67,6 +67,10 @@ export class GroupingProcessor {
         continue;
       }
 
+      // Mark photo1 as processed immediately (matches main.py behavior)
+      assignedPhotos.add(photo1.id);
+
+      // Start a new group with photo1
       const group: PhotoGroup = {
         photoIds: [photo1.id],
         similarities: [],
@@ -75,6 +79,9 @@ export class GroupingProcessor {
         startTime: new Date(photo1.dateTaken),
         endTime: new Date(photo1.dateTaken)
       };
+
+      // Parse photo1 time for comparison
+      const photo1Time = new Date(photo1.dateTaken).getTime();
 
       // Look ahead for similar photos within time window
       for (let j = i + 1; j < sortedPhotos.length; j++) {
@@ -85,14 +92,18 @@ export class GroupingProcessor {
           continue;
         }
 
-        // Check time window
-        const timeDiff = this.getTimeDifferenceMinutes(
-          photo1.dateTaken,
-          photo2.dateTaken
-        );
+        // Parse photo2 time
+        const photo2Time = new Date(photo2.dateTaken).getTime();
 
-        if (timeDiff > timeWindowMinutes) {
-          break; // Photos are sorted, so we can stop here
+        // Check time window (60 minutes = 3600 seconds = 3600000 milliseconds)
+        const timeDiff = Math.abs(photo2Time - photo1Time) / 1000; // in seconds
+        if (timeDiff > 3600) { // 60 minutes = 3600 seconds
+          // Since photos are sorted by time, we can break early
+          // if we've exceeded the time window
+          if (photo2Time > photo1Time) {
+            break;
+          }
+          continue;
         }
 
         const embedding2 = embeddingMap.get(photo2.id);
@@ -106,15 +117,16 @@ export class GroupingProcessor {
           embedding2
         );
 
-        // If similar enough, add to group
+        // If similar enough, add to group and mark as processed
         if (similarity >= similarityThreshold) {
           group.photoIds.push(photo2.id);
           group.similarities.push(similarity);
           group.endTime = new Date(photo2.dateTaken);
+          assignedPhotos.add(photo2.id);
         }
       }
 
-      // Only create group if it has at least 2 photos
+      // Only create group if it has at least 2 photos (matches main.py)
       if (group.photoIds.length >= 2) {
         // Calculate average similarity
         group.avgSimilarity =
@@ -124,9 +136,6 @@ export class GroupingProcessor {
         // Calculate time span
         group.timeSpan =
           (group.endTime.getTime() - group.startTime.getTime()) / 1000 / 60; // in minutes
-
-        // Mark all photos as assigned
-        group.photoIds.forEach(id => assignedPhotos.add(id));
 
         groups.push(group);
       }
@@ -155,7 +164,7 @@ export class GroupingProcessor {
   async hierarchicalGrouping(
     photos: Photo[],
     embeddingMap: Map<string, number[]>,
-    similarityThreshold: number = 0.85,
+    similarityThreshold: number = 0.6,
     timeWindowMinutes: number = 60
   ): Promise<PhotoGroup[]> {
     console.log('Starting hierarchical clustering...');

@@ -235,7 +235,7 @@ async function handleStartGrouping(options: any = {}) {
 
   try {
     const {
-      similarityThreshold = 0.85, // Higher threshold for CLIP (0-1 scale)
+      similarityThreshold = 0.6, // Same threshold as main.py
       timeWindowMinutes = 60
     } = options;
 

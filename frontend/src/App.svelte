@@ -16,16 +16,23 @@
   } from './stores/appStore';
   import db, { type Group, type Photo } from './lib/db';
 
-  let currentStep: 'welcome' | 'preview' | 'analyzing' | 'grouping' | 'reviewing' = 'welcome';
+  let currentStep: 'welcome' | 'preview' | 'indexing' | 'indexed' | 'grouping' | 'reviewing' = 'welcome';
   let autoProcessing = false;
   let showSettings = false;
   let processingStartTime = 0;
   let processingStartProgress = 0; // Track progress at start for accurate time estimates
   let estimatedTimeRemaining = 0;
 
-  // Settings
-  let settings = {
-    similarityThreshold: 0.85,
+  // Settings - reactive to appStore
+  $: settings = {
+    similarityThreshold: $appStore.settings.similarityThreshold,
+    timeWindowMinutes: $appStore.settings.timeWindowMinutes,
+    minGroupSize: $appStore.minGroupSize
+  };
+  
+  // Local settings for editing (before save)
+  let editingSettings = {
+    similarityThreshold: 0.6,
     timeWindowMinutes: 60,
     minGroupSize: 2
   };
@@ -43,13 +50,15 @@
 
   onMount(async () => {
     await initializeApp();
-    settings.similarityThreshold = $appStore.settings.similarityThreshold;
-    settings.timeWindowMinutes = $appStore.settings.timeWindowMinutes;
+    // Initialize editing settings from appStore
+    editingSettings.similarityThreshold = $appStore.settings.similarityThreshold;
+    editingSettings.timeWindowMinutes = $appStore.settings.timeWindowMinutes;
+    editingSettings.minGroupSize = $appStore.minGroupSize;
     
     // Check if we need to resume interrupted processing
     if ($appStore.processingProgress.isProcessing) {
       if ($appStore.processingProgress.type === 'embedding') {
-        currentStep = 'analyzing';
+        currentStep = 'indexing';
         autoProcessing = true;
         processingStartTime = Date.now();
         processingStartProgress = $appStore.processingProgress.current; // Track where we're resuming from
@@ -57,8 +66,6 @@
         try {
           await calculateEmbeddings();
           await refreshData();
-          // Auto-start grouping after embeddings complete
-          await handleStartGrouping();
           determineCurrentStep();
         } catch (error) {
           console.error('Resume error:', error);
@@ -93,29 +100,31 @@
     } else if (stats.photosWithEmbeddings === 0) {
       currentStep = 'preview';
     } else if (stats.totalGroups === 0) {
-      currentStep = 'analyzing';
+      // All photos have embeddings but no groups yet - show indexed screen
+      currentStep = 'indexed';
     } else {
       currentStep = 'reviewing';
       loadUngroupedPhotos();
     }
   }
 
-  async function handleStartAnalysis() {
+  async function handleStartIndexing() {
     if (autoProcessing) return;
 
     autoProcessing = true;
     processingStartTime = Date.now();
-    processingStartProgress = 0; // Start from 0 for new analysis
-    currentStep = 'analyzing';
+    processingStartProgress = 0; // Start from 0 for new indexing
+    currentStep = 'indexing';
 
     try {
       await calculateEmbeddings();
       await refreshData();
-
-      // Auto-start grouping
-      await handleStartGrouping();
+      determineCurrentStep();
     } catch (error) {
-      console.error('Analysis error:', error);
+      console.error('Indexing error:', error);
+      autoProcessing = false;
+      determineCurrentStep();
+    } finally {
       autoProcessing = false;
     }
   }
@@ -166,9 +175,9 @@
   }
 
   async function handleReindex() {
-    if (confirm('This will clear all duplicate groups and let you adjust settings to re-analyze. Your scanned photos will be kept. Continue?')) {
+    if (confirm('This will clear all groups and embeddings. You will need to index again. Your scanned photos will be kept. Continue?')) {
       try {
-        // Only clear groups and embeddings, keep photos
+        // Clear groups and embeddings, keep photos
         await db.clearGroups();
         await db.clearEmbeddings();
 
@@ -179,6 +188,23 @@
         currentStep = 'preview';
       } catch (error) {
         alert('Error reindexing: ' + error);
+      }
+    }
+  }
+
+  async function handleRegroup() {
+    if (confirm('This will clear all duplicate groups. You can adjust settings and regroup. Your indexed photos will be kept. Continue?')) {
+      try {
+        // Only clear groups, keep embeddings
+        await db.clearGroups();
+
+        groupPhotosCache.clear();
+        ungroupedPhotos = [];
+
+        await refreshData();
+        currentStep = 'indexed';
+      } catch (error) {
+        alert('Error regrouping: ' + error);
       }
     }
   }
@@ -199,10 +225,20 @@
 
   function handleSaveSettings() {
     updateSettings({
-      similarityThreshold: settings.similarityThreshold,
-      timeWindowMinutes: settings.timeWindowMinutes,
+      similarityThreshold: editingSettings.similarityThreshold,
+      timeWindowMinutes: editingSettings.timeWindowMinutes,
     });
+    // Update minGroupSize separately as it's not part of Settings interface
+    appStore.update(s => ({ ...s, minGroupSize: editingSettings.minGroupSize }));
     showSettings = false;
+  }
+  
+  function handleOpenSettings() {
+    // Load current settings into editing settings when opening modal
+    editingSettings.similarityThreshold = $appStore.settings.similarityThreshold;
+    editingSettings.timeWindowMinutes = $appStore.settings.timeWindowMinutes;
+    editingSettings.minGroupSize = $appStore.minGroupSize;
+    showSettings = true;
   }
 
   async function getGroupPhotos(group: Group): Promise<Photo[]> {
@@ -298,7 +334,7 @@
       <p class="subtitle">Find and delete duplicate photos</p>
     </div>
     {#if currentStep === 'welcome'}
-      <button onclick={() => showSettings = true} class="settings-btn">
+      <button onclick={handleOpenSettings} class="settings-btn">
         ⚙️ Settings
       </button>
     {/if}
@@ -306,18 +342,23 @@
 
   <!-- Progress Steps -->
   <div class="steps">
-    <div class="step" class:active={currentStep === 'welcome' || currentStep === 'preview'} class:done={currentStep === 'analyzing' || currentStep === 'grouping' || currentStep === 'reviewing'}>
+    <div class="step" class:active={currentStep === 'welcome' || currentStep === 'preview'} class:done={currentStep === 'indexing' || currentStep === 'indexed' || currentStep === 'grouping' || currentStep === 'reviewing'}>
       <div class="step-number">1</div>
       <div class="step-label">Scan Photos</div>
     </div>
-    <div class="step-line" class:done={currentStep === 'analyzing' || currentStep === 'grouping' || currentStep === 'reviewing'}></div>
-    <div class="step" class:active={currentStep === 'analyzing' || currentStep === 'grouping'} class:done={currentStep === 'reviewing'}>
+    <div class="step-line" class:done={currentStep === 'indexing' || currentStep === 'indexed' || currentStep === 'grouping' || currentStep === 'reviewing'}></div>
+    <div class="step" class:active={currentStep === 'indexing'} class:done={currentStep === 'indexed' || currentStep === 'grouping' || currentStep === 'reviewing'}>
       <div class="step-number">2</div>
+      <div class="step-label">Index Photos</div>
+    </div>
+    <div class="step-line" class:done={currentStep === 'indexed' || currentStep === 'grouping' || currentStep === 'reviewing'}></div>
+    <div class="step" class:active={currentStep === 'indexed' || currentStep === 'grouping'} class:done={currentStep === 'reviewing'}>
+      <div class="step-number">3</div>
       <div class="step-label">Find Duplicates</div>
     </div>
     <div class="step-line" class:done={currentStep === 'reviewing'}></div>
     <div class="step" class:active={currentStep === 'reviewing'}>
-      <div class="step-number">3</div>
+      <div class="step-number">4</div>
       <div class="step-label">Review & Delete</div>
     </div>
   </div>
@@ -361,14 +402,14 @@
           <div>
             <h2>📷 {$appStore.stats.totalPhotos} Photos Scanned</h2>
             <p class="preview-subtitle">
-              Review your scanned photos before analyzing for duplicates
+              Review your scanned photos before indexing
             </p>
           </div>
           <div class="preview-actions">
-            <button onclick={handleStartAnalysis} class="btn btn-primary">
-              🔍 Start the Scan
+            <button onclick={handleStartIndexing} class="btn btn-primary">
+              🧠 Start Indexing
             </button>
-            <button onclick={() => showSettings = true} class="btn btn-secondary">
+            <button onclick={handleOpenSettings} class="btn btn-secondary">
               ⚙️ Settings
             </button>
           </div>
@@ -383,13 +424,45 @@
         </div>
       </div>
 
-    {:else if currentStep === 'analyzing' || currentStep === 'grouping'}
+    {:else if currentStep === 'indexed'}
+      <!-- Indexed Screen - Show indexed photos with grouping options -->
+      <div class="indexed-screen">
+        <div class="indexed-header">
+          <div>
+            <h2>✅ {$appStore.stats.photosWithEmbeddings} Photos Indexed</h2>
+            <p class="indexed-subtitle">
+              Ready to find duplicates. Adjust settings if needed before grouping.
+            </p>
+          </div>
+          <div class="indexed-actions">
+            <button onclick={handleStartGrouping} class="btn btn-primary">
+              🔍 Start Grouping
+            </button>
+            <button onclick={handleOpenSettings} class="btn btn-secondary">
+              ⚙️ Settings
+            </button>
+            <button onclick={handleReindex} class="btn btn-secondary">
+              🔄 Reindex
+            </button>
+          </div>
+        </div>
+
+        <div class="photo-grid">
+          {#each sortedPhotos as photo (photo.id)}
+            <div class="photo-preview">
+              <img src="data:image/jpeg;base64,{photo.base64}" alt="Indexed" loading="lazy" />
+            </div>
+          {/each}
+        </div>
+      </div>
+
+    {:else if currentStep === 'indexing' || currentStep === 'grouping'}
       <!-- Processing Screen -->
       <div class="processing-screen">
         <div class="spinner"></div>
         <h2>
-          {#if currentStep === 'analyzing'}
-            🧠 Analyzing your photos...
+          {#if currentStep === 'indexing'}
+            🧠 Indexing your photos...
           {:else}
             🔍 Finding duplicates...
           {/if}
@@ -453,8 +526,11 @@
           <h2>No duplicates found!</h2>
           <p>Your photos are already clean.</p>
           <div class="action-buttons">
+            <button onclick={handleRegroup} class="btn btn-secondary">
+              🔄 Regroup
+            </button>
             <button onclick={handleReindex} class="btn btn-secondary">
-              🔄 Reindex with Different Settings
+              🔄 Reindex
             </button>
             <button onclick={handleRescan} class="btn btn-danger-outline">
               ⚠️ Rescan from Scratch
@@ -480,6 +556,9 @@
                     🗑️ Delete {$appStore.selectedPhotos.size} Photos
                   </button>
                 {:else}
+                  <button onclick={handleRegroup} class="btn btn-secondary">
+                    🔄 Regroup
+                  </button>
                   <button onclick={handleReindex} class="btn btn-secondary">
                     🔄 Reindex
                   </button>
@@ -568,15 +647,16 @@
             <input
               type="range"
               id="similarityThreshold"
-              bind:value={settings.similarityThreshold}
-              min="0.70"
+              bind:value={editingSettings.similarityThreshold}
+              min="0.3"
               max="0.98"
               step="0.01"
               class="slider"
             />
             <span class="slider-label">Strict</span>
           </div>
-          <span class="slider-value">{(settings.similarityThreshold * 100).toFixed(0)}% match required</span>
+          <span class="slider-value">{(editingSettings.similarityThreshold * 100).toFixed(0)}% match required</span>
+          <span class="setting-hint">Lower values group more photos together (default: 60%)</span>
         </div>
 
         <div class="setting-group">
@@ -587,12 +667,14 @@
           <input
             type="number"
             id="timeWindow"
-            bind:value={settings.timeWindowMinutes}
+            bind:value={editingSettings.timeWindowMinutes}
             min="5"
             max="1440"
+            step="5"
             class="input"
           />
           <span class="input-suffix">minutes</span>
+          <span class="setting-hint">Photos taken within this time window can be grouped (default: 60 minutes)</span>
         </div>
 
         <div class="setting-group">
@@ -603,7 +685,7 @@
           <input
             type="number"
             id="minGroupSize"
-            bind:value={settings.minGroupSize}
+            bind:value={editingSettings.minGroupSize}
             min="2"
             max="10"
             class="input"
@@ -818,6 +900,37 @@
     margin-bottom: 32px;
     padding-bottom: 24px;
     border-bottom: 2px solid #e2e8f0;
+  }
+
+  /* Indexed Screen */
+  .indexed-screen {
+    padding: 20px;
+  }
+
+  .indexed-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 32px;
+    padding-bottom: 24px;
+    border-bottom: 2px solid #e2e8f0;
+  }
+
+  .indexed-header h2 {
+    font-size: 28px;
+    color: #1e293b;
+    margin: 0 0 8px 0;
+  }
+
+  .indexed-subtitle {
+    font-size: 16px;
+    color: #64748b;
+    margin: 0;
+  }
+
+  .indexed-actions {
+    display: flex;
+    gap: 12px;
   }
 
   .preview-header h2 {
@@ -1424,17 +1537,17 @@
       gap: 16px;
     }
 
-    .review-header, .preview-header {
+    .review-header, .preview-header, .indexed-header {
       flex-direction: column;
       gap: 20px;
     }
 
-    .review-actions, .preview-actions {
+    .review-actions, .preview-actions, .indexed-actions {
       width: 100%;
       flex-direction: column;
     }
 
-    .review-actions .btn, .preview-actions .btn {
+    .review-actions .btn, .preview-actions .btn, .indexed-actions .btn {
       width: 100%;
     }
 

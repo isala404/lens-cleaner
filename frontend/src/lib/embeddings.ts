@@ -46,7 +46,8 @@ export class EmbeddingsProcessor {
 
         featureExtractor = await pipeline(
           'image-feature-extraction',
-          'Xenova/dinov2-small'
+          'Xenova/dinov2-base',
+          {device: 'webgpu'}
         ) as FeatureExtractionPipeline;
 
         console.log('CLIP model loaded successfully');
