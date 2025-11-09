@@ -3,12 +3,12 @@
  * Handles photo storage, embedding calculations, and grouping
  */
 
-import db from '../lib/db';
+import db, { type Photo } from '../lib/db';
 import { EmbeddingsProcessor } from '../lib/embeddings';
 import { GroupingProcessor } from '../lib/grouping';
 
 // Import Transformers.js at the top level
-import { pipeline } from '@huggingface/transformers';
+// import { pipeline } from '@huggingface/transformers';
 
 // Initialize processors
 let embeddingsProcessor: EmbeddingsProcessor | null = null;
@@ -17,36 +17,36 @@ let groupingProcessor: GroupingProcessor | null = null;
 // State management
 let isProcessingEmbeddings = false;
 let processingProgress = {
-  total: 0,
-  processed: 0,
-  status: 'idle' // idle, processing, completed, error
+	total: 0,
+	processed: 0,
+	status: 'idle' // idle, processing, completed, error
 };
 
 /**
  * Initialize the service worker
  */
 async function initialize() {
-  console.log('Lens Cleaner service worker starting...');
+	console.log('Lens Cleaner service worker starting...');
 
-  try {
-    // Initialize database
-    await db.init();
-    console.log('Database initialized');
+	try {
+		// Initialize database
+		await db.init();
+		console.log('Database initialized');
 
-    // Initialize processors
-    embeddingsProcessor = new EmbeddingsProcessor();
-    groupingProcessor = new GroupingProcessor();
+		// Initialize processors
+		embeddingsProcessor = new EmbeddingsProcessor();
+		groupingProcessor = new GroupingProcessor();
 
-    console.log('Service worker ready');
-  } catch (error) {
-    console.error('Failed to initialize service worker:', error);
-  }
+		console.log('Service worker ready');
+	} catch (error) {
+		console.error('Failed to initialize service worker:', error);
+	}
 }
 
 // Initialize on install
 chrome.runtime.onInstalled.addListener(() => {
-  console.log('Extension installed');
-  initialize();
+	console.log('Extension installed');
+	initialize();
 });
 
 // Initialize on startup
@@ -56,320 +56,325 @@ initialize();
  * Message handler
  */
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  console.log('Received message:', message.action);
+	console.log('Received message:', message.action);
 
-  switch (message.action) {
-    case 'storePhotos':
-      handleStorePhotos(message.photos)
-        .then(result => sendResponse({ success: true, result }))
-        .catch(error => sendResponse({ success: false, error: error.message }));
-      return true; // Keep channel open for async response
+	switch (message.action) {
+		case 'storePhotos':
+			handleStorePhotos(message.photos)
+				.then((result) => sendResponse({ success: true, result }))
+				.catch((error) => sendResponse({ success: false, error: error.message }));
+			return true; // Keep channel open for async response
 
-    case 'startEmbeddings':
-      handleStartEmbeddings(message.options)
-        .then(result => sendResponse({ success: true, result }))
-        .catch(error => sendResponse({ success: false, error: error.message }));
-      return true;
+		case 'startEmbeddings':
+			handleStartEmbeddings(message.options)
+				.then((result) => sendResponse({ success: true, result }))
+				.catch((error) => sendResponse({ success: false, error: error.message }));
+			return true;
 
-    case 'getEmbeddingProgress':
-      sendResponse({
-        success: true,
-        progress: processingProgress
-      });
-      return false;
+		case 'getEmbeddingProgress':
+			sendResponse({
+				success: true,
+				progress: processingProgress
+			});
+			return false;
 
-    case 'startGrouping':
-      handleStartGrouping(message.options)
-        .then(result => sendResponse({ success: true, result }))
-        .catch(error => sendResponse({ success: false, error: error.message }));
-      return true;
+		case 'startGrouping':
+			handleStartGrouping(message.options)
+				.then((result) => sendResponse({ success: true, result }))
+				.catch((error) => sendResponse({ success: false, error: error.message }));
+			return true;
 
-    case 'getStats':
-      handleGetStats()
-        .then(stats => sendResponse({ success: true, stats }))
-        .catch(error => sendResponse({ success: false, error: error.message }));
-      return true;
+		case 'getStats':
+			handleGetStats()
+				.then((stats) => sendResponse({ success: true, stats }))
+				.catch((error) => sendResponse({ success: false, error: error.message }));
+			return true;
 
-    case 'clearAllData':
-      handleClearAllData()
-        .then(() => sendResponse({ success: true }))
-        .catch(error => sendResponse({ success: false, error: error.message }));
-      return true;
+		case 'clearAllData':
+			handleClearAllData()
+				.then(() => sendResponse({ success: true }))
+				.catch((error) => sendResponse({ success: false, error: error.message }));
+			return true;
 
-    case 'initiateScan':
-      console.log('🟢 Received initiateScan for tab:', message.tabId);
-      // Start the scan process asynchronously (don't wait for tab load)
-      handleInitiateScan(message.tabId, message.options)
-        .catch(error => console.error('🔴 Error in handleInitiateScan:', error));
-      // Respond immediately so popup can close
-      sendResponse({ success: true, message: 'Scan initiated' });
-      return false; // Response sent synchronously
+		case 'initiateScan':
+			console.log('🟢 Received initiateScan for tab:', message.tabId);
+			// Start the scan process asynchronously (don't wait for tab load)
+			handleInitiateScan(message.tabId, message.options).catch((error) =>
+				console.error('🔴 Error in handleInitiateScan:', error)
+			);
+			// Respond immediately so popup can close
+			sendResponse({ success: true, message: 'Scan initiated' });
+			return false; // Response sent synchronously
 
-    case 'initiateDeletion':
-      console.log('🗑️ Received initiateDeletion for tab:', message.tabId);
-      // Start the deletion process asynchronously
-      handleInitiateDeletion(message.tabId, message.photoIds)
-        .catch(error => console.error('🔴 Error in handleInitiateDeletion:', error));
-      // Respond immediately
-      sendResponse({ success: true, message: 'Deletion workflow initiated' });
-      return false; // Response sent synchronously
+		case 'initiateDeletion':
+			console.log('🗑️ Received initiateDeletion for tab:', message.tabId);
+			// Start the deletion process asynchronously
+			handleInitiateDeletion(message.tabId, message.photoIds).catch((error) =>
+				console.error('🔴 Error in handleInitiateDeletion:', error)
+			);
+			// Respond immediately
+			sendResponse({ success: true, message: 'Deletion workflow initiated' });
+			return false; // Response sent synchronously
 
-    default:
-      sendResponse({ success: false, error: 'Unknown action' });
-      return false;
-  }
+		default:
+			sendResponse({ success: false, error: 'Unknown action' });
+			return false;
+	}
 });
 
 /**
  * Store photos in IndexedDB
  */
-async function handleStorePhotos(photos: any[]) {
-  console.log(`Storing ${photos.length} photos...`);
+async function handleStorePhotos(photos: Photo[]) {
+	console.log(`Storing ${photos.length} photos...`);
 
-  try {
-    await db.addPhotos(photos);
-    console.log(`Successfully stored ${photos.length} photos`);
+	try {
+		await db.addPhotos(photos);
+		console.log(`Successfully stored ${photos.length} photos`);
 
-    // Update metadata
-    const stats = await db.getStats();
-    await db.setMetadata('lastScrapeTime', Date.now());
-    await db.setMetadata('totalPhotos', stats.totalPhotos);
+		// Update metadata
+		const stats = await db.getStats();
+		await db.setMetadata('lastScrapeTime', Date.now());
+		await db.setMetadata('totalPhotos', stats.totalPhotos);
 
-    return {
-      stored: photos.length,
-      totalPhotos: stats.totalPhotos
-    };
-  } catch (error) {
-    console.error('Error storing photos:', error);
-    throw error;
-  }
+		return {
+			stored: photos.length,
+			totalPhotos: stats.totalPhotos
+		};
+	} catch (error) {
+		console.error('Error storing photos:', error);
+		throw error;
+	}
 }
 
 /**
  * Start embedding calculation process
  */
-async function handleStartEmbeddings(options: any = {}) {
-  if (isProcessingEmbeddings) {
-    throw new Error('Embedding processing already in progress');
-  }
+async function handleStartEmbeddings(options: { batchSize?: number } = {}) {
+	if (isProcessingEmbeddings) {
+		throw new Error('Embedding processing already in progress');
+	}
 
-  console.log('Starting embedding calculations...');
+	console.log('Starting embedding calculations...');
 
-  isProcessingEmbeddings = true;
-  processingProgress = {
-    total: 0,
-    processed: 0,
-    status: 'processing'
-  };
+	isProcessingEmbeddings = true;
+	processingProgress = {
+		total: 0,
+		processed: 0,
+		status: 'processing'
+	};
 
-  try {
-    // Get photos without embeddings
-    const photos = await db.getPhotosWithoutEmbeddings(10000); // Process all
-    processingProgress.total = photos.length;
+	try {
+		// Get photos without embeddings
+		const photos = await db.getPhotosWithoutEmbeddings(10000); // Process all
+		processingProgress.total = photos.length;
 
-    console.log(`Found ${photos.length} photos to process`);
+		console.log(`Found ${photos.length} photos to process`);
 
-    if (photos.length === 0) {
-      processingProgress.status = 'completed';
-      isProcessingEmbeddings = false;
-      return {
-        message: 'No photos need processing',
-        processed: 0
-      };
-    }
+		if (photos.length === 0) {
+			processingProgress.status = 'completed';
+			isProcessingEmbeddings = false;
+			return {
+				message: 'No photos need processing',
+				processed: 0
+			};
+		}
 
-    // Initialize embeddings processor if not already done
-    if (!embeddingsProcessor) {
-      embeddingsProcessor = new EmbeddingsProcessor();
-    }
+		// Initialize embeddings processor if not already done
+		if (!embeddingsProcessor) {
+			embeddingsProcessor = new EmbeddingsProcessor();
+		}
 
-    if (!embeddingsProcessor.isInitialized()) {
-      console.log('Initializing CLIP model (first time may take 1-2 minutes to download)...');
-      await embeddingsProcessor.initialize();
-      console.log('CLIP model ready!');
-    }
+		if (!embeddingsProcessor.isInitialized()) {
+			console.log('Initializing CLIP model (first time may take 1-2 minutes to download)...');
+			await embeddingsProcessor.initialize();
+			console.log('CLIP model ready!');
+		}
 
-    // Process photos in batches
-    const batchSize = options.batchSize || 10;
-    let processed = 0;
+		// Process photos in batches
+		const batchSize = options.batchSize || 10;
+		let processed = 0;
 
-    for (let i = 0; i < photos.length; i += batchSize) {
-      const batch = photos.slice(i, i + batchSize);
+		for (let i = 0; i < photos.length; i += batchSize) {
+			const batch = photos.slice(i, i + batchSize);
 
-      for (const photo of batch) {
-        try {
-          // Calculate embedding
-          const embedding = await embeddingsProcessor.calculateEmbedding(photo.base64);
+			for (const photo of batch) {
+				try {
+					// Calculate embedding
+					const embedding = await embeddingsProcessor.calculateEmbedding(photo.base64);
 
-          // Store embedding
-          await db.addEmbedding(photo.id, embedding);
+					// Store embedding
+					await db.addEmbedding(photo.id, embedding);
 
-          processed++;
-          processingProgress.processed = processed;
+					processed++;
+					processingProgress.processed = processed;
 
-          if (processed % 10 === 0) {
-            console.log(`Processed ${processed}/${photos.length} embeddings`);
-          }
-        } catch (error) {
-          console.error(`Error processing photo ${photo.id}:`, error);
-          // Continue with next photo
-        }
-      }
-    }
+					if (processed % 10 === 0) {
+						console.log(`Processed ${processed}/${photos.length} embeddings`);
+					}
+				} catch (error) {
+					console.error(`Error processing photo ${photo.id}:`, error);
+					// Continue with next photo
+				}
+			}
+		}
 
-    processingProgress.status = 'completed';
-    await db.setMetadata('lastEmbeddingTime', Date.now());
+		processingProgress.status = 'completed';
+		await db.setMetadata('lastEmbeddingTime', Date.now());
 
-    console.log(`Embedding processing complete: ${processed} photos`);
+		console.log(`Embedding processing complete: ${processed} photos`);
 
-    return {
-      message: 'Embedding processing complete',
-      processed: processed,
-      total: photos.length
-    };
-  } catch (error) {
-    console.error('Error during embedding processing:', error);
-    processingProgress.status = 'error';
-    throw error;
-  } finally {
-    isProcessingEmbeddings = false;
-  }
+		return {
+			message: 'Embedding processing complete',
+			processed: processed,
+			total: photos.length
+		};
+	} catch (error) {
+		console.error('Error during embedding processing:', error);
+		processingProgress.status = 'error';
+		throw error;
+	} finally {
+		isProcessingEmbeddings = false;
+	}
 }
 
 /**
  * Start grouping process
  */
-async function handleStartGrouping(options: any = {}) {
-  console.log('Starting photo grouping...');
+async function handleStartGrouping(
+	options: { similarityThreshold?: number; timeWindowMinutes?: number } = {}
+) {
+	console.log('Starting photo grouping...');
 
-  try {
-    const {
-      similarityThreshold = 0.6, // Same threshold as main.py
-      timeWindowMinutes = 60
-    } = options;
+	try {
+		const {
+			similarityThreshold = 0.6, // Same threshold as main.py
+			timeWindowMinutes = 60
+		} = options;
 
-    // Get all photos with embeddings
-    const photos = await db.getAllPhotos();
-    const photosWithEmbeddings = photos.filter(p => p.hasEmbedding);
+		// Get all photos with embeddings
+		const photos = await db.getAllPhotos();
+		const photosWithEmbeddings = photos.filter((p) => p.hasEmbedding);
 
-    console.log(`Grouping ${photosWithEmbeddings.length} photos`);
+		console.log(`Grouping ${photosWithEmbeddings.length} photos`);
 
-    if (photosWithEmbeddings.length === 0) {
-      return {
-        message: 'No photos with embeddings to group',
-        groups: 0
-      };
-    }
+		if (photosWithEmbeddings.length === 0) {
+			return {
+				message: 'No photos with embeddings to group',
+				groups: 0
+			};
+		}
 
-    // Get all embeddings
-    const embeddings = await db.getAllEmbeddings();
-    const embeddingMap = new Map(embeddings.map(e => [e.photoId, e.embedding]));
+		// Get all embeddings
+		const embeddings = await db.getAllEmbeddings();
+		const embeddingMap = new Map(embeddings.map((e) => [e.photoId, e.embedding]));
 
-    if (!groupingProcessor) {
-      groupingProcessor = new GroupingProcessor();
-    }
+		if (!groupingProcessor) {
+			groupingProcessor = new GroupingProcessor();
+		}
 
-    // Group photos
-    const groups = await groupingProcessor.groupSimilarPhotos(
-      photosWithEmbeddings,
-      embeddingMap,
-      similarityThreshold,
-      timeWindowMinutes
-    );
+		// Group photos
+		const groups = await groupingProcessor.groupSimilarPhotos(
+			photosWithEmbeddings,
+			embeddingMap,
+			similarityThreshold,
+			timeWindowMinutes
+		);
 
-    console.log(`Found ${groups.length} groups`);
+		console.log(`Found ${groups.length} groups`);
 
-    // Store groups in database
-    for (const group of groups) {
-      await db.createGroup(group.photoIds, group.avgSimilarity);
-    }
+		// Store groups in database
+		for (const group of groups) {
+			await db.createGroup(group.photoIds, group.avgSimilarity);
+		}
 
-    await db.setMetadata('lastGroupingTime', Date.now());
-    await db.setMetadata('totalGroups', groups.length);
+		await db.setMetadata('lastGroupingTime', Date.now());
+		await db.setMetadata('totalGroups', groups.length);
 
-    return {
-      message: 'Grouping complete',
-      groups: groups.length,
-      photosInGroups: groups.reduce((sum, g) => sum + g.photoIds.length, 0)
-    };
-  } catch (error) {
-    console.error('Error during grouping:', error);
-    throw error;
-  }
+		return {
+			message: 'Grouping complete',
+			groups: groups.length,
+			photosInGroups: groups.reduce((sum, g) => sum + g.photoIds.length, 0)
+		};
+	} catch (error) {
+		console.error('Error during grouping:', error);
+		throw error;
+	}
 }
 
 /**
  * Get database statistics
  */
 async function handleGetStats() {
-  const stats = await db.getStats();
-  const lastScrapeTime = await db.getMetadata('lastScrapeTime');
-  const lastEmbeddingTime = await db.getMetadata('lastEmbeddingTime');
-  const lastGroupingTime = await db.getMetadata('lastGroupingTime');
+	const stats = await db.getStats();
+	const lastScrapeTime = await db.getMetadata('lastScrapeTime');
+	const lastEmbeddingTime = await db.getMetadata('lastEmbeddingTime');
+	const lastGroupingTime = await db.getMetadata('lastGroupingTime');
 
-  return {
-    ...stats,
-    lastScrapeTime,
-    lastEmbeddingTime,
-    lastGroupingTime
-  };
+	return {
+		...stats,
+		lastScrapeTime,
+		lastEmbeddingTime,
+		lastGroupingTime
+	};
 }
 
 /**
  * Clear all data
  */
 async function handleClearAllData() {
-  console.log('Clearing all data...');
-  await db.clearAll();
-  processingProgress = {
-    total: 0,
-    processed: 0,
-    status: 'idle'
-  };
-  console.log('All data cleared');
+	console.log('Clearing all data...');
+	await db.clearAll();
+	processingProgress = {
+		total: 0,
+		processed: 0,
+		status: 'idle'
+	};
+	console.log('All data cleared');
 }
 
 /**
  * Initiate scan on a tab
  * This waits for the tab to load then sends the scraping message
  */
-async function handleInitiateScan(tabId: number, options: any = {}) {
-  console.log('📸 Service worker initiating scan on tab:', tabId);
+async function handleInitiateScan(tabId: number, options: { maxScrolls?: number } = {}) {
+	console.log('📸 Service worker initiating scan on tab:', tabId);
 
-  return new Promise((resolve, reject) => {
-    // Listen for tab updates
-    const listener = (updatedTabId: number, changeInfo: chrome.tabs.TabChangeInfo, tab: chrome.tabs.Tab) => {
-      if (updatedTabId === tabId && changeInfo.status === 'complete') {
-        console.log('📸 Tab loaded, sending startScraping message...');
+	return new Promise((resolve, reject) => {
+		// Listen for tab updates
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars
+		const listener = (updatedTabId: number, changeInfo: any, _tab: chrome.tabs.Tab) => {
+			if (updatedTabId === tabId && changeInfo.status === 'complete') {
+				console.log('📸 Tab loaded, sending startScraping message...');
 
-        // Remove listener
-        chrome.tabs.onUpdated.removeListener(listener);
+				// Remove listener
+				chrome.tabs.onUpdated.removeListener(listener);
 
-        // Wait a bit for content script to initialize
-        setTimeout(async () => {
-          try {
-            await chrome.tabs.sendMessage(tabId, {
-              action: 'startScraping',
-              options: options
-            });
-            console.log('📸 Scraping message sent successfully');
-            resolve(undefined);
-          } catch (error) {
-            console.error('📸 Error sending message to content script:', error);
-            reject(error);
-          }
-        }, 2000);
-      }
-    };
+				// Wait a bit for content script to initialize
+				setTimeout(async () => {
+					try {
+						await chrome.tabs.sendMessage(tabId, {
+							action: 'startScraping',
+							options: options
+						});
+						console.log('📸 Scraping message sent successfully');
+						resolve(undefined);
+					} catch (error) {
+						console.error('📸 Error sending message to content script:', error);
+						reject(error);
+					}
+				}, 2000);
+			}
+		};
 
-    chrome.tabs.onUpdated.addListener(listener);
+		chrome.tabs.onUpdated.addListener(listener);
 
-    // Timeout after 30 seconds
-    setTimeout(() => {
-      chrome.tabs.onUpdated.removeListener(listener);
-      reject(new Error('Timeout waiting for tab to load'));
-    }, 30000);
-  });
+		// Timeout after 30 seconds
+		setTimeout(() => {
+			chrome.tabs.onUpdated.removeListener(listener);
+			reject(new Error('Timeout waiting for tab to load'));
+		}, 30000);
+	});
 }
 
 /**
@@ -377,52 +382,53 @@ async function handleInitiateScan(tabId: number, options: any = {}) {
  * This opens Google Photos albums page and starts the deletion workflow
  */
 async function handleInitiateDeletion(tabId: number, photoIds: string[]) {
-  console.log('🗑️ Service worker initiating deletion workflow for', photoIds.length, 'photos');
+	console.log('🗑️ Service worker initiating deletion workflow for', photoIds.length, 'photos');
 
-  try {
-    // Update the tab to navigate to albums page
-    await chrome.tabs.update(tabId, {
-      url: 'https://photos.google.com/albums'
-    });
+	try {
+		// Update the tab to navigate to albums page
+		await chrome.tabs.update(tabId, {
+			url: 'https://photos.google.com/albums'
+		});
 
-    // Wait for the tab to load
-    return new Promise((resolve, reject) => {
-      const listener = (updatedTabId: number, changeInfo: chrome.tabs.TabChangeInfo, tab: chrome.tabs.Tab) => {
-        if (updatedTabId === tabId && changeInfo.status === 'complete') {
-          console.log('🗑️ Albums page loaded, sending startDeletion message...');
+		// Wait for the tab to load
+		return new Promise((resolve, reject) => {
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars
+			const listener = (updatedTabId: number, changeInfo: any, _tab: chrome.tabs.Tab) => {
+				if (updatedTabId === tabId && changeInfo.status === 'complete') {
+					console.log('🗑️ Albums page loaded, sending startDeletion message...');
 
-          // Remove listener
-          chrome.tabs.onUpdated.removeListener(listener);
+					// Remove listener
+					chrome.tabs.onUpdated.removeListener(listener);
 
-          // Wait for content script to initialize
-          setTimeout(async () => {
-            try {
-              await chrome.tabs.sendMessage(tabId, {
-                action: 'startDeletion',
-                photoIds: photoIds
-              });
-              console.log('🗑️ Deletion message sent successfully');
-              resolve(undefined);
-            } catch (error) {
-              console.error('🗑️ Error sending message to content script:', error);
-              reject(error);
-            }
-          }, 2000);
-        }
-      };
+					// Wait for content script to initialize
+					setTimeout(async () => {
+						try {
+							await chrome.tabs.sendMessage(tabId, {
+								action: 'startDeletion',
+								photoIds: photoIds
+							});
+							console.log('🗑️ Deletion message sent successfully');
+							resolve(undefined);
+						} catch (error) {
+							console.error('🗑️ Error sending message to content script:', error);
+							reject(error);
+						}
+					}, 2000);
+				}
+			};
 
-      chrome.tabs.onUpdated.addListener(listener);
+			chrome.tabs.onUpdated.addListener(listener);
 
-      // Timeout after 30 seconds
-      setTimeout(() => {
-        chrome.tabs.onUpdated.removeListener(listener);
-        reject(new Error('Timeout waiting for albums page to load'));
-      }, 30000);
-    });
-  } catch (error) {
-    console.error('🗑️ Error in handleInitiateDeletion:', error);
-    throw error;
-  }
+			// Timeout after 30 seconds
+			setTimeout(() => {
+				chrome.tabs.onUpdated.removeListener(listener);
+				reject(new Error('Timeout waiting for albums page to load'));
+			}, 30000);
+		});
+	} catch (error) {
+		console.error('🗑️ Error in handleInitiateDeletion:', error);
+		throw error;
+	}
 }
 
 console.log('Service worker loaded');

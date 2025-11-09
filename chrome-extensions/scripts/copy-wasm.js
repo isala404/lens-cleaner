@@ -12,31 +12,24 @@ const distDir = join(__dirname, '..', 'dist');
 
 // Ensure dist directory exists
 if (!existsSync(distDir)) {
-  mkdirSync(distDir, { recursive: true });
+	mkdirSync(distDir, { recursive: true });
 }
 
 // ONNX Runtime WASM files from @huggingface/transformers
 const onnxFiles = [
-  'ort-wasm-simd.wasm',
-  'ort-wasm-simd.mjs',
-  'ort-wasm-simd-threaded.wasm',
-  'ort-wasm-simd-threaded.mjs',
-  'ort-wasm-simd-threaded.jsep.wasm',
-  'ort-wasm-simd-threaded.jsep.mjs',
-  'ort-wasm.wasm',
-  'ort-wasm.mjs',
-  'ort-wasm-threaded.wasm',
-  'ort-wasm-threaded.mjs'
+	'ort-wasm-simd.wasm',
+	'ort-wasm-simd.mjs',
+	'ort-wasm-simd-threaded.wasm',
+	'ort-wasm-simd-threaded.mjs',
+	'ort-wasm-simd-threaded.jsep.wasm',
+	'ort-wasm-simd-threaded.jsep.mjs',
+	'ort-wasm.wasm',
+	'ort-wasm.mjs',
+	'ort-wasm-threaded.wasm',
+	'ort-wasm-threaded.mjs'
 ];
 
-const sourceDir = join(
-  __dirname,
-  '..',
-  'node_modules',
-  '@huggingface',
-  'transformers',
-  'dist'
-);
+const sourceDir = join(__dirname, '..', 'node_modules', '@huggingface', 'transformers', 'dist');
 
 console.log('Copying ONNX Runtime WASM files...');
 console.log('Source:', sourceDir);
@@ -46,21 +39,21 @@ let copied = 0;
 let skipped = 0;
 
 for (const file of onnxFiles) {
-  const sourcePath = join(sourceDir, file);
-  const destPath = join(distDir, file);
+	const sourcePath = join(sourceDir, file);
+	const destPath = join(distDir, file);
 
-  try {
-    if (existsSync(sourcePath)) {
-      copyFileSync(sourcePath, destPath);
-      console.log(`✓ Copied: ${file}`);
-      copied++;
-    } else {
-      console.log(`⚠ Skipped (not found): ${file}`);
-      skipped++;
-    }
-  } catch (error) {
-    console.error(`✗ Error copying ${file}:`, error.message);
-  }
+	try {
+		if (existsSync(sourcePath)) {
+			copyFileSync(sourcePath, destPath);
+			console.log(`✓ Copied: ${file}`);
+			copied++;
+		} else {
+			console.log(`⚠ Skipped (not found): ${file}`);
+			skipped++;
+		}
+	} catch (error) {
+		console.error(`✗ Error copying ${file}:`, error.message);
+	}
 }
 
 console.log(`\nDone! Copied ${copied} files, skipped ${skipped} files.`);

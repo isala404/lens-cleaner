@@ -72,6 +72,7 @@ bun preview
 To use as a Chrome extension:
 
 1. Build the project:
+
    ```bash
    npm run build
    ```
@@ -163,6 +164,7 @@ frontend/
 - Safari 15+
 
 Requires:
+
 - IndexedDB support
 - WebAssembly support
 - ES2020+ JavaScript

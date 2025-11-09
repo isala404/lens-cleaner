@@ -1,57 +1,52 @@
 {
-  "manifest_version": 3,
-  "name": "Lens Cleaner",
-  "version": "1.0.0",
-  "description": "AI-powered duplicate photo detector for Google Photos",
-  "permissions": [
-    "storage",
-    "activeTab",
-    "tabs",
-    "scripting"
-  ],
-  "host_permissions": [
-    "https://photos.google.com/*",
-    "https://cdn.jsdelivr.net/*",
-    "https://huggingface.co/*"
-  ],
-  "background": {
-    "service_worker": "service-worker.js",
-    "type": "module"
-  },
-  "content_scripts": [
-    {
-      "matches": ["https://photos.google.com/*"],
-      "js": ["content-scraper.js"],
-      "run_at": "document_idle"
-    }
-  ],
-  "action": {
-    "default_popup": "popup.html",
-    "default_title": "Lens Cleaner"
-  },
-  "icons": {
-    "16": "vite.svg",
-    "48": "vite.svg",
-    "128": "vite.svg"
-  },
-  "web_accessible_resources": [
-    {
-      "resources": [
-        "dashboard.html",
-        "assets/*",
-        "*.wasm",
-        "*.mjs",
-        "ort-wasm-simd.wasm",
-        "ort-wasm-simd.mjs",
-        "ort-wasm-simd-threaded.wasm",
-        "ort-wasm-simd-threaded.mjs",
-        "ort-wasm-simd-threaded.jsep.wasm",
-        "ort-wasm-simd-threaded.jsep.mjs"
-      ],
-      "matches": ["<all_urls>"]
-    }
-  ],
-  "content_security_policy": {
-    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"
-  }
+	"manifest_version": 3,
+	"name": "Lens Cleaner",
+	"version": "1.0.0",
+	"description": "AI-powered duplicate photo detector for Google Photos",
+	"permissions": ["storage", "activeTab", "tabs", "scripting"],
+	"host_permissions": [
+		"https://photos.google.com/*",
+		"https://cdn.jsdelivr.net/*",
+		"https://huggingface.co/*"
+	],
+	"background": {
+		"service_worker": "service-worker.js",
+		"type": "module"
+	},
+	"content_scripts": [
+		{
+			"matches": ["https://photos.google.com/*"],
+			"js": ["content-scraper.js"],
+			"run_at": "document_idle"
+		}
+	],
+	"action": {
+		"default_popup": "popup.html",
+		"default_title": "Lens Cleaner"
+	},
+	"icons": {
+		"16": "favicon.png",
+		"48": "favicon.png",
+		"128": "favicon.png"
+	},
+	"web_accessible_resources": [
+		{
+			"resources": [
+				"dashboard.html",
+				"assets/*",
+				"*.wasm",
+				"*.mjs",
+				"ort-wasm-simd.wasm",
+				"ort-wasm-simd.mjs",
+				"ort-wasm-simd-threaded.wasm",
+				"ort-wasm-simd-threaded.mjs",
+				"ort-wasm-simd-threaded.jsep.wasm",
+				"ort-wasm-simd-threaded.jsep.mjs"
+			],
+			"matches": ["<all_urls>"]
+		}
+	],
+	"content_security_policy": {
+		"extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"
+	}
 }

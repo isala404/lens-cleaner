@@ -1,269 +1,264 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Lens Cleaner</title>
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<link rel="icon" href="favicon.png" />
+		<title>Lens Cleaner</title>
+		<style>
+			* {
+				margin: 0;
+				padding: 0;
+				box-sizing: border-box;
+			}
 
-    body {
-      width: 380px;
-      min-height: 420px;
-      padding: 24px;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-    }
+			body {
+				width: 380px;
+				min-height: 420px;
+				padding: 24px;
+				font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+				background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+				color: white;
+			}
 
-    .header {
-      text-align: center;
-      margin-bottom: 28px;
-    }
+			.header {
+				text-align: center;
+				margin-bottom: 28px;
+			}
 
-    .logo {
-      font-size: 56px;
-      margin-bottom: 12px;
-      animation: float 3s ease-in-out infinite;
-    }
+			.logo {
+				font-size: 56px;
+				margin-bottom: 12px;
+				animation: float 3s ease-in-out infinite;
+			}
 
-    @keyframes float {
-      0%, 100% { transform: translateY(0px); }
-      50% { transform: translateY(-10px); }
-    }
+			@keyframes float {
+				0%,
+				100% {
+					transform: translateY(0px);
+				}
+				50% {
+					transform: translateY(-10px);
+				}
+			}
 
-    h1 {
-      font-size: 26px;
-      font-weight: 700;
-      margin-bottom: 6px;
-    }
+			h1 {
+				font-size: 26px;
+				font-weight: 700;
+				margin-bottom: 6px;
+			}
 
-    .tagline {
-      font-size: 14px;
-      opacity: 0.9;
-    }
+			.tagline {
+				font-size: 14px;
+				opacity: 0.9;
+			}
 
-    .stats {
-      background: rgba(255, 255, 255, 0.15);
-      border-radius: 14px;
-      padding: 18px;
-      margin-bottom: 20px;
-      backdrop-filter: blur(10px);
-      border: 1px solid rgba(255, 255, 255, 0.2);
-    }
+			.stats {
+				background: rgba(255, 255, 255, 0.15);
+				border-radius: 14px;
+				padding: 18px;
+				margin-bottom: 20px;
+				backdrop-filter: blur(10px);
+				border: 1px solid rgba(255, 255, 255, 0.2);
+			}
 
-    .stat-row {
-      display: flex;
-      justify-content: space-between;
-      padding: 10px 0;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    }
+			.stat-row {
+				display: flex;
+				justify-content: space-between;
+				padding: 10px 0;
+				border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+			}
 
-    .stat-row:last-child {
-      border-bottom: none;
-    }
+			.stat-row:last-child {
+				border-bottom: none;
+			}
 
-    .stat-label {
-      font-size: 14px;
-      opacity: 0.95;
-    }
+			.stat-label {
+				font-size: 14px;
+				opacity: 0.95;
+			}
 
-    .stat-value {
-      font-weight: 700;
-      font-size: 18px;
-    }
+			.stat-value {
+				font-weight: 700;
+				font-size: 18px;
+			}
 
-    .actions {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
+			.actions {
+				display: flex;
+				flex-direction: column;
+				gap: 12px;
+			}
 
-    .btn {
-      padding: 16px 24px;
-      border: none;
-      border-radius: 10px;
-      font-size: 16px;
-      font-weight: 600;
-      cursor: pointer;
-      background: white;
-      color: #667eea;
-      transition: all 0.2s;
-      text-align: center;
-      text-decoration: none;
-      display: block;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    }
+			.btn {
+				padding: 16px 24px;
+				border: none;
+				border-radius: 10px;
+				font-size: 16px;
+				font-weight: 600;
+				cursor: pointer;
+				background: white;
+				color: #667eea;
+				transition: all 0.2s;
+				text-align: center;
+				text-decoration: none;
+				display: block;
+				box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+			}
 
-    .btn:hover:not(:disabled) {
-      transform: translateY(-2px);
-      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
-    }
+			.btn:hover:not(:disabled) {
+				transform: translateY(-2px);
+				box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+			}
 
-    .btn:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-      transform: none;
-    }
+			.btn:disabled {
+				opacity: 0.6;
+				cursor: not-allowed;
+				transform: none;
+			}
 
-    .btn-primary {
-      background: white;
-      color: #667eea;
-      font-size: 18px;
-      padding: 18px 24px;
-    }
+			.btn-primary {
+				background: white;
+				color: #667eea;
+				font-size: 18px;
+				padding: 18px 24px;
+			}
 
-    .btn-secondary {
-      background: rgba(255, 255, 255, 0.25);
-      color: white;
-      backdrop-filter: blur(10px);
-      border: 1px solid rgba(255, 255, 255, 0.3);
-    }
+			.btn-secondary {
+				background: rgba(255, 255, 255, 0.25);
+				color: white;
+				backdrop-filter: blur(10px);
+				border: 1px solid rgba(255, 255, 255, 0.3);
+			}
 
-    .btn-danger-outline {
-      background: rgba(239, 68, 68, 0.9);
-      color: white;
-      border: 2px solid rgba(239, 68, 68, 0.9);
-      font-weight: 700;
-      backdrop-filter: blur(10px);
-    }
+			.btn-danger-outline {
+				background: rgba(239, 68, 68, 0.9);
+				color: white;
+				border: 2px solid rgba(239, 68, 68, 0.9);
+				font-weight: 700;
+				backdrop-filter: blur(10px);
+			}
 
-    .btn-danger-outline:hover:not(:disabled) {
-      background: rgba(220, 38, 38, 0.95);
-      border-color: rgba(220, 38, 38, 0.95);
-      color: white;
-    }
+			.btn-danger-outline:hover:not(:disabled) {
+				background: rgba(220, 38, 38, 0.95);
+				border-color: rgba(220, 38, 38, 0.95);
+				color: white;
+			}
 
-    .btn-danger {
-      background: rgba(239, 68, 68, 0.95);
-      color: white;
-      border: 2px solid rgba(239, 68, 68, 0.95);
-      font-weight: 700;
-      font-size: 18px;
-      padding: 18px 24px;
-    }
+			.btn-danger {
+				background: rgba(239, 68, 68, 0.95);
+				color: white;
+				border: 2px solid rgba(239, 68, 68, 0.95);
+				font-weight: 700;
+				font-size: 18px;
+				padding: 18px 24px;
+			}
 
-    .btn-danger:hover:not(:disabled) {
-      background: rgba(220, 38, 38, 1);
-      border-color: rgba(220, 38, 38, 1);
-      color: white;
-    }
+			.btn-danger:hover:not(:disabled) {
+				background: rgba(220, 38, 38, 1);
+				border-color: rgba(220, 38, 38, 1);
+				color: white;
+			}
 
-    .message {
-      background: rgba(255, 255, 255, 0.2);
-      padding: 14px 16px;
-      border-radius: 10px;
-      margin-bottom: 16px;
-      font-size: 14px;
-      text-align: center;
-      backdrop-filter: blur(10px);
-      border: 1px solid rgba(255, 255, 255, 0.3);
-      line-height: 1.6;
-    }
+			.message {
+				background: rgba(255, 255, 255, 0.2);
+				padding: 14px 16px;
+				border-radius: 10px;
+				margin-bottom: 16px;
+				font-size: 14px;
+				text-align: center;
+				backdrop-filter: blur(10px);
+				border: 1px solid rgba(255, 255, 255, 0.3);
+				line-height: 1.6;
+			}
 
-    .message.success {
-      background: rgba(52, 211, 153, 0.3);
-      border-color: rgba(52, 211, 153, 0.5);
-    }
+			.message.success {
+				background: rgba(52, 211, 153, 0.3);
+				border-color: rgba(52, 211, 153, 0.5);
+			}
 
-    .message.error {
-      background: rgba(248, 113, 113, 0.3);
-      border-color: rgba(248, 113, 113, 0.5);
-    }
+			.message.error {
+				background: rgba(248, 113, 113, 0.3);
+				border-color: rgba(248, 113, 113, 0.5);
+			}
 
-    .message.info {
-      background: rgba(147, 197, 253, 0.3);
-      border-color: rgba(147, 197, 253, 0.5);
-    }
+			.message.info {
+				background: rgba(147, 197, 253, 0.3);
+				border-color: rgba(147, 197, 253, 0.5);
+			}
 
-    .simple-message {
-      background: rgba(255, 255, 255, 0.15);
-      padding: 16px;
-      border-radius: 10px;
-      margin-bottom: 16px;
-      font-size: 14px;
-      text-align: center;
-      line-height: 1.6;
-      backdrop-filter: blur(10px);
-      border: 1px solid rgba(255, 255, 255, 0.2);
-    }
+			.simple-message {
+				background: rgba(255, 255, 255, 0.15);
+				padding: 16px;
+				border-radius: 10px;
+				margin-bottom: 16px;
+				font-size: 14px;
+				text-align: center;
+				line-height: 1.6;
+				backdrop-filter: blur(10px);
+				border: 1px solid rgba(255, 255, 255, 0.2);
+			}
 
-    .footer {
-      margin-top: 20px;
-      text-align: center;
-      font-size: 11px;
-      opacity: 0.7;
-    }
+			.footer {
+				margin-top: 20px;
+				text-align: center;
+				font-size: 11px;
+				opacity: 0.7;
+			}
 
-    .hidden {
-      display: none !important;
-    }
+			.hidden {
+				display: none !important;
+			}
 
-    .divider {
-      height: 1px;
-      background: rgba(255, 255, 255, 0.2);
-      margin: 16px 0;
-    }
-  </style>
-</head>
-<body>
-  <div class="header">
-    <div class="logo">📸</div>
-    <h1>Lens Cleaner</h1>
-    <div class="tagline">Find & delete duplicate photos</div>
-  </div>
+			.divider {
+				height: 1px;
+				background: rgba(255, 255, 255, 0.2);
+				margin: 16px 0;
+			}
+		</style>
+	</head>
+	<body>
+		<div class="header">
+			<div class="logo">📸</div>
+			<h1>Lens Cleaner</h1>
+			<div class="tagline">Find & delete duplicate photos</div>
+		</div>
 
-  <div class="stats">
-    <div class="stat-row">
-      <span class="stat-label">📷 Photos Scanned</span>
-      <span class="stat-value" id="totalPhotos">0</span>
-    </div>
-    <div class="stat-row" id="groupsRow">
-      <span class="stat-label">🔍 Duplicate Groups</span>
-      <span class="stat-value" id="totalGroups">0</span>
-    </div>
-  </div>
+		<div class="stats">
+			<div class="stat-row">
+				<span class="stat-label">📷 Photos Scanned</span>
+				<span class="stat-value" id="totalPhotos">0</span>
+			</div>
+			<div class="stat-row" id="groupsRow">
+				<span class="stat-label">🔍 Duplicate Groups</span>
+				<span class="stat-value" id="totalGroups">0</span>
+			</div>
+		</div>
 
-  <div id="message" class="message hidden"></div>
+		<div id="message" class="message hidden"></div>
 
-  <div id="notOnGooglePhotos" class="hidden">
-    <div class="simple-message">
-      To find duplicates, first open your Google Photos library
-    </div>
-    <div class="actions">
-      <button id="openGooglePhotos" class="btn btn-primary">
-        🌐 Open Google Photos
-      </button>
-    </div>
-  </div>
+		<div id="notOnGooglePhotos" class="hidden">
+			<div class="simple-message">To find duplicates, first open your Google Photos library</div>
+			<div class="actions">
+				<button id="openGooglePhotos" class="btn btn-primary">🌐 Open Google Photos</button>
+			</div>
+		</div>
 
-  <div id="onGooglePhotos" class="hidden">
-    <div class="actions">
-      <button id="startScan" class="btn btn-primary">
-        🔍 Find Duplicates
-      </button>
-      <button id="clearData" class="btn btn-danger-outline hidden">
-        🗑️ Clear All & Start Fresh
-      </button>
-    </div>
+		<div id="onGooglePhotos" class="hidden">
+			<div class="actions">
+				<button id="startScan" class="btn btn-primary">🔍 Find Duplicates</button>
+				<button id="clearData" class="btn btn-danger-outline hidden">
+					🗑️ Clear All & Start Fresh
+				</button>
+			</div>
 
-    <div class="divider"></div>
+			<div class="divider"></div>
 
-    <div class="actions">
-      <button id="openDashboard" class="btn btn-secondary">
-        📊 View Results
-      </button>
-    </div>
-  </div>
+			<div class="actions">
+				<button id="openDashboard" class="btn btn-secondary">📊 View Results</button>
+			</div>
+		</div>
 
-  <div class="footer">
-    Lens Cleaner v1.0 • AI-powered
-  </div>
-
-  <script src="popup.js"></script>
-</body>
+		<div class="footer">Lens Cleaner v1.0 • AI-powered</div>
+		<script src="popup.js"></script>
+	</body>
 </html>
