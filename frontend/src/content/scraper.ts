@@ -14,7 +14,10 @@ let scrapingProgress: {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log('📸 Lens Cleaner received message:', message.action);
 
-  if (message.action === 'startScraping') {
+  if (message.action === 'ping') {
+    // Respond to ping to confirm content script is loaded
+    sendResponse({ status: 'ready' });
+  } else if (message.action === 'startScraping') {
     console.log('📸 Starting scraping with options:', message.options);
     startScraping(message.options || {});
     sendResponse({ status: 'started' });

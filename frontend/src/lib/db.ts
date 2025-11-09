@@ -525,6 +525,72 @@ class LensDB {
   }
 
   /**
+   * Clear only groups (for reindexing)
+   */
+  async clearGroups(): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const transaction = this.db.transaction(['groups', 'photos'], 'readwrite');
+
+    // Clear groups
+    await new Promise<void>((resolve, reject) => {
+      const request = transaction.objectStore('groups').clear();
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+
+    // Reset groupId on all photos
+    const photosStore = transaction.objectStore('photos');
+    const allPhotos = await new Promise<Photo[]>((resolve, reject) => {
+      const request = photosStore.getAll();
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+
+    for (const photo of allPhotos) {
+      photo.groupId = null;
+      await new Promise<void>((resolve, reject) => {
+        const request = photosStore.put(photo);
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+      });
+    }
+  }
+
+  /**
+   * Clear only embeddings (for reindexing)
+   */
+  async clearEmbeddings(): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const transaction = this.db.transaction(['embeddings', 'photos'], 'readwrite');
+
+    // Clear embeddings
+    await new Promise<void>((resolve, reject) => {
+      const request = transaction.objectStore('embeddings').clear();
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+
+    // Reset hasEmbedding flag on all photos
+    const photosStore = transaction.objectStore('photos');
+    const allPhotos = await new Promise<Photo[]>((resolve, reject) => {
+      const request = photosStore.getAll();
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+
+    for (const photo of allPhotos) {
+      photo.hasEmbedding = false;
+      await new Promise<void>((resolve, reject) => {
+        const request = photosStore.put(photo);
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+      });
+    }
+  }
+
+  /**
    * Clear all data (for testing/reset)
    */
   async clearAll(): Promise<void> {

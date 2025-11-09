@@ -9,110 +9,212 @@
     groupPhotos,
     clearAllData,
     deleteSelectedPhotos,
-    deleteGroup,
     togglePhotoSelection,
     selectAllInGroup,
     clearSelection,
     updateSettings,
-    setViewMode,
-    setSortBy,
-    setMinGroupSize
   } from './stores/appStore';
   import db, { type Group, type Photo } from './lib/db';
 
+  let currentStep: 'welcome' | 'preview' | 'analyzing' | 'grouping' | 'reviewing' = 'welcome';
+  let autoProcessing = false;
   let showSettings = false;
-  let settingsSimilarityThreshold = 0.85;
-  let settingsTimeWindow = 60;
-  let settingsMaxPhotos = 1000;
+  let processingStartTime = 0;
+  let estimatedTimeRemaining = 0;
+
+  // Settings
+  let settings = {
+    similarityThreshold: 0.85,
+    timeWindowMinutes: 60,
+    minGroupSize: 2
+  };
+
+  // Cache for group photos to avoid re-fetching
+  let groupPhotosCache = new Map<string, Photo[]>();
+  let ungroupedPhotos: Photo[] = [];
 
   onMount(async () => {
     await initializeApp();
-    settingsSimilarityThreshold = $appStore.settings.similarityThreshold;
-    settingsTimeWindow = $appStore.settings.timeWindowMinutes;
-    settingsMaxPhotos = $appStore.settings.maxPhotos;
+    settings.similarityThreshold = $appStore.settings.similarityThreshold;
+    settings.timeWindowMinutes = $appStore.settings.timeWindowMinutes;
+    determineCurrentStep();
   });
 
-  async function handleCalculateEmbeddings() {
-    try {
-      const count = await calculateEmbeddings();
-      alert(`Processed ${count} photos!`);
-    } catch (error) {
-      alert('Error calculating embeddings: ' + error);
+  function determineCurrentStep() {
+    const stats = $appStore.stats;
+
+    if (stats.totalPhotos === 0) {
+      currentStep = 'welcome';
+    } else if (stats.photosWithEmbeddings === 0) {
+      currentStep = 'preview';
+    } else if (stats.totalGroups === 0) {
+      currentStep = 'analyzing';
+    } else {
+      currentStep = 'reviewing';
+      loadUngroupedPhotos();
     }
   }
 
-  async function handleGroupPhotos() {
+  async function handleStartAnalysis() {
+    if (autoProcessing) return;
+
+    autoProcessing = true;
+    processingStartTime = Date.now();
+    currentStep = 'analyzing';
+
     try {
-      const count = await groupPhotos();
-      alert(`Created ${count} groups!`);
+      await calculateEmbeddings();
+      await refreshData();
+
+      // Auto-start grouping
+      await handleStartGrouping();
     } catch (error) {
-      alert('Error grouping photos: ' + error);
+      console.error('Analysis error:', error);
+      autoProcessing = false;
     }
   }
 
-  async function handleClearData() {
-    if (confirm('Are you sure you want to delete all data? This cannot be undone.')) {
-      try {
-        await clearAllData();
-        alert('All data cleared');
-      } catch (error) {
-        alert('Error clearing data: ' + error);
-      }
+  async function handleStartGrouping() {
+    if (!autoProcessing) {
+      autoProcessing = true;
+    }
+
+    currentStep = 'grouping';
+
+    try {
+      await groupPhotos();
+      await refreshData();
+
+      // Clear cache when new groups are created
+      groupPhotosCache.clear();
+
+      currentStep = 'reviewing';
+      await loadUngroupedPhotos();
+    } catch (error) {
+      console.error('Grouping error:', error);
+    } finally {
+      autoProcessing = false;
     }
   }
 
   async function handleDeleteSelected() {
     if ($appStore.selectedPhotos.size === 0) {
-      alert('No photos selected');
       return;
     }
 
-    if (confirm(`Delete ${$appStore.selectedPhotos.size} selected photo(s)?`)) {
+    if (confirm(`Delete ${$appStore.selectedPhotos.size} photo(s) from your collection?`)) {
       try {
         await deleteSelectedPhotos();
-        alert('Photos deleted');
+
+        // Clear cache for affected groups
+        groupPhotosCache.clear();
+
+        await refreshData();
+        await loadUngroupedPhotos();
       } catch (error) {
         alert('Error deleting photos: ' + error);
       }
     }
   }
 
-  async function handleDeleteGroup(groupId: string) {
-    if (confirm('Delete this group? Photos will not be deleted.')) {
+  async function handleReindex() {
+    if (confirm('This will clear all duplicate groups and let you adjust settings to re-analyze. Your scanned photos will be kept. Continue?')) {
       try {
-        await deleteGroup(groupId);
+        // Only clear groups and embeddings, keep photos
+        await db.clearGroups();
+        await db.clearEmbeddings();
+
+        groupPhotosCache.clear();
+        ungroupedPhotos = [];
+
+        await refreshData();
+        currentStep = 'preview';
       } catch (error) {
-        alert('Error deleting group: ' + error);
+        alert('Error reindexing: ' + error);
+      }
+    }
+  }
+
+  async function handleRescan() {
+    if (confirm('⚠️ WARNING: This will delete all scanned photos and groups. You will need to scan from Google Photos again. Continue?')) {
+      try {
+        await clearAllData();
+        groupPhotosCache.clear();
+        ungroupedPhotos = [];
+        await refreshData();
+        currentStep = 'welcome';
+      } catch (error) {
+        alert('Error clearing data: ' + error);
       }
     }
   }
 
   function handleSaveSettings() {
     updateSettings({
-      similarityThreshold: settingsSimilarityThreshold,
-      timeWindowMinutes: settingsTimeWindow,
-      maxPhotos: settingsMaxPhotos
+      similarityThreshold: settings.similarityThreshold,
+      timeWindowMinutes: settings.timeWindowMinutes,
     });
     showSettings = false;
-    alert('Settings saved!');
   }
 
   async function getGroupPhotos(group: Group): Promise<Photo[]> {
+    // Check cache first
+    if (groupPhotosCache.has(group.id)) {
+      return groupPhotosCache.get(group.id)!;
+    }
+
     const photos = await Promise.all(group.photoIds.map(id => db.getPhoto(id)));
-    return photos.filter(p => p !== undefined) as Photo[];
+    const validPhotos = photos.filter(p => p !== undefined) as Photo[];
+
+    // Cache the result
+    groupPhotosCache.set(group.id, validPhotos);
+
+    return validPhotos;
   }
 
-  $: emptyStateMessage =
-    $appStore.stats.totalPhotos === 0 ? 'No Photos Yet' :
-    $appStore.stats.photosWithEmbeddings === 0 ? `${$appStore.stats.totalPhotos} Photos Scraped!` :
-    $appStore.stats.totalGroups === 0 ? 'Embeddings Calculated!' :
-    'No Groups Found';
+  async function loadUngroupedPhotos() {
+    try {
+      const allPhotos = await db.getAllPhotos();
+      const allGroups = await db.getAllGroups();
 
-  $: emptyStateDescription =
-    $appStore.stats.totalPhotos === 0 ? 'Open the extension popup on Google Photos to start scanning' :
-    $appStore.stats.photosWithEmbeddings === 0 ? 'Click "Calculate AI" below to analyze them' :
-    $appStore.stats.totalGroups === 0 ? 'Click "Group Photos" to find similar images' :
-    'Adjust filters to see more groups';
+      // Get all photo IDs that are in groups
+      const groupedPhotoIds = new Set<string>();
+      allGroups.forEach(group => {
+        group.photoIds.forEach(id => groupedPhotoIds.add(id));
+      });
+
+      // Filter photos that are NOT in any group
+      ungroupedPhotos = allPhotos.filter(photo => !groupedPhotoIds.has(photo.id));
+    } catch (error) {
+      console.error('Error loading ungrouped photos:', error);
+      ungroupedPhotos = [];
+    }
+  }
+
+  // Update time estimate
+  $: if ($appStore.processingProgress.isProcessing && processingStartTime > 0) {
+    const elapsed = Date.now() - processingStartTime;
+    const current = $appStore.processingProgress.current;
+    const total = $appStore.processingProgress.total;
+
+    if (current > 0 && total > 0) {
+      const rate = current / elapsed; // items per ms
+      const remaining = total - current;
+      estimatedTimeRemaining = remaining / rate; // ms
+    }
+  }
+
+  function formatTimeEstimate(ms: number): string {
+    const seconds = Math.ceil(ms / 1000);
+    if (seconds < 60) return `${seconds}s`;
+    const minutes = Math.ceil(seconds / 60);
+    if (minutes < 60) return `${minutes}m`;
+    const hours = Math.ceil(minutes / 60);
+    return `${hours}h`;
+  }
+
+  // Filter groups by minimum size
+  $: displayGroups = $filteredGroups.filter(g => g.photoIds.length >= settings.minGroupSize);
 </script>
 
 <div class="app-container">
@@ -120,192 +222,253 @@
   <header class="header">
     <div class="header-content">
       <h1 class="logo">📸 Lens Cleaner</h1>
-      <div class="header-actions">
-        <button onclick={() => refreshData()} class="btn btn-secondary">
-          <span>🔄</span> Refresh
-        </button>
-        <button onclick={() => showSettings = true} class="btn btn-secondary">
-          <span>⚙️</span> Settings
-        </button>
-      </div>
+      <p class="subtitle">Find and delete duplicate photos</p>
     </div>
+    {#if currentStep !== 'welcome'}
+      <button onclick={() => showSettings = true} class="settings-btn">
+        ⚙️ Settings
+      </button>
+    {/if}
   </header>
 
-  <!-- Stats Bar -->
-  <div class="stats-bar">
-    <div class="stat-card">
-      <div class="stat-value">{$appStore.stats.totalPhotos}</div>
-      <div class="stat-label">Total Photos</div>
+  <!-- Progress Steps -->
+  <div class="steps">
+    <div class="step" class:active={currentStep === 'welcome' || currentStep === 'preview'} class:done={currentStep === 'analyzing' || currentStep === 'grouping' || currentStep === 'reviewing'}>
+      <div class="step-number">1</div>
+      <div class="step-label">Scan Photos</div>
     </div>
-    <div class="stat-card">
-      <div class="stat-value">{$appStore.stats.totalGroups}</div>
-      <div class="stat-label">Groups Found</div>
+    <div class="step-line" class:done={currentStep === 'analyzing' || currentStep === 'grouping' || currentStep === 'reviewing'}></div>
+    <div class="step" class:active={currentStep === 'analyzing' || currentStep === 'grouping'} class:done={currentStep === 'reviewing'}>
+      <div class="step-number">2</div>
+      <div class="step-label">Find Duplicates</div>
     </div>
-    <div class="stat-card">
-      <div class="stat-value">{$appStore.stats.photosWithEmbeddings}</div>
-      <div class="stat-label">Processed</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-value">{$appStore.stats.photosInGroups}</div>
-      <div class="stat-label">In Groups</div>
+    <div class="step-line" class:done={currentStep === 'reviewing'}></div>
+    <div class="step" class:active={currentStep === 'reviewing'}>
+      <div class="step-number">3</div>
+      <div class="step-label">Review & Delete</div>
     </div>
   </div>
-
-  <!-- Action Bar -->
-  <div class="action-bar">
-    <div class="action-section">
-      <h2>Actions</h2>
-      <div class="action-buttons">
-        <button
-          onclick={handleCalculateEmbeddings}
-          disabled={$appStore.stats.totalPhotos === 0 || $appStore.processingProgress.isProcessing}
-          class="btn btn-primary"
-        >
-          <span>🧠</span> Calculate AI
-        </button>
-        <button
-          onclick={handleGroupPhotos}
-          disabled={$appStore.stats.photosWithEmbeddings === 0 || $appStore.processingProgress.isProcessing}
-          class="btn btn-primary"
-        >
-          <span>📊</span> Group Photos
-        </button>
-        <button
-          onclick={handleDeleteSelected}
-          disabled={$appStore.selectedPhotos.size === 0}
-          class="btn btn-danger"
-        >
-          <span>🗑️</span> Delete Selected ({$appStore.selectedPhotos.size})
-        </button>
-        <button onclick={handleClearData} class="btn btn-danger">
-          <span>🗑️</span> Clear All Data
-        </button>
-      </div>
-    </div>
-    <div class="action-section">
-      <h2>View</h2>
-      <div class="filter-controls">
-        <select bind:value={$appStore.viewMode} onchange={() => setViewMode($appStore.viewMode)} class="select">
-          <option value="groups">Grouped Photos</option>
-          <option value="all">All Photos</option>
-        </select>
-      </div>
-    </div>
-    {#if $appStore.viewMode === 'groups'}
-      <div class="action-section">
-        <h2>Filters</h2>
-        <div class="filter-controls">
-          <select bind:value={$appStore.sortBy} onchange={() => setSortBy($appStore.sortBy)} class="select">
-            <option value="similarity">Sort by Similarity</option>
-            <option value="size">Sort by Group Size</option>
-            <option value="date">Sort by Date</option>
-          </select>
-          <input
-            type="range"
-            bind:value={$appStore.minGroupSize}
-            oninput={() => setMinGroupSize($appStore.minGroupSize)}
-            min="2"
-            max="10"
-            class="slider"
-          />
-          <label>Min Group Size: {$appStore.minGroupSize}</label>
-        </div>
-      </div>
-    {/if}
-  </div>
-
-  <!-- Progress Bar -->
-  {#if $appStore.processingProgress.isProcessing}
-    <div class="progress-bar">
-      <div class="progress-content">
-        <div class="progress-text">{$appStore.processingProgress.message}</div>
-        <div class="progress-track">
-          <div
-            class="progress-fill"
-            style="width: {$appStore.processingProgress.total > 0 ? ($appStore.processingProgress.current / $appStore.processingProgress.total * 100) : 0}%"
-          ></div>
-        </div>
-        <div class="progress-details">
-          {$appStore.processingProgress.current} / {$appStore.processingProgress.total}
-        </div>
-      </div>
-    </div>
-  {/if}
 
   <!-- Main Content -->
   <main class="main-content">
-    {#if $appStore.viewMode === 'groups' && $filteredGroups.length === 0}
-      <!-- Empty State -->
-      <div class="empty-state">
-        <div class="empty-icon">📷</div>
-        <h2>{emptyStateMessage}</h2>
-        <p>{emptyStateDescription}</p>
-        <ol class="instructions">
-          <li>Open the extension popup while on Google Photos</li>
-          <li>Click "Start Scan" to scrape photos from your Google Photos library</li>
-          <li>Click "Calculate AI" to analyze the photos using machine learning</li>
-          <li>Click "Group Photos" to find similar/duplicate images</li>
-          <li>Review and delete duplicates!</li>
-        </ol>
-      </div>
-    {:else if $appStore.viewMode === 'groups'}
-      <!-- Groups Grid -->
-      <div class="groups-container">
-        {#each $filteredGroups as group (group.id)}
-          {#await getGroupPhotos(group)}
-            <div class="group-card">Loading...</div>
-          {:then photos}
-            <div class="group-card">
-              <div class="group-header">
-                <div class="group-info">
-                  <span class="group-badge">{photos.length} Photos</span>
-                  <span class="group-meta">
-                    Similarity: {((group.similarityScore || 0.9) * 100).toFixed(0)}%
-                  </span>
-                </div>
-                <div class="group-actions">
-                  <button onclick={() => selectAllInGroup(group.id)} class="btn btn-secondary btn-sm">
-                    Select All
-                  </button>
-                  <button onclick={() => handleDeleteGroup(group.id)} class="btn btn-danger btn-sm">
-                    Delete Group
-                  </button>
-                </div>
-              </div>
-              <div class="group-photos">
-                {#each photos as photo}
-                  <div
-                    class="photo-item"
-                    class:selected={$appStore.selectedPhotos.has(photo.id)}
-                    onclick={() => togglePhotoSelection(photo.id)}
-                  >
-                    <img src="data:image/jpeg;base64,{photo.base64}" alt="Photo" />
-                    <div class="photo-checkbox" class:checked={$appStore.selectedPhotos.has(photo.id)}>
-                      {#if $appStore.selectedPhotos.has(photo.id)}✓{/if}
-                    </div>
-                  </div>
-                {/each}
-              </div>
-            </div>
-          {/await}
-        {/each}
-      </div>
-    {:else}
-      <!-- All Photos View -->
-      <div class="group-photos">
-        {#each $appStore.photos.sort((a, b) => new Date(b.dateTaken).getTime() - new Date(a.dateTaken).getTime()) as photo}
-          <div
-            class="photo-item"
-            class:selected={$appStore.selectedPhotos.has(photo.id)}
-            onclick={() => togglePhotoSelection(photo.id)}
-          >
-            <img src="data:image/jpeg;base64,{photo.base64}" alt="Photo" />
-            <div class="photo-checkbox" class:checked={$appStore.selectedPhotos.has(photo.id)}>
-              {#if $appStore.selectedPhotos.has(photo.id)}✓{/if}
+    {#if currentStep === 'welcome'}
+      <!-- Welcome Screen -->
+      <div class="welcome-screen">
+        <div class="welcome-icon">📷</div>
+        <h2>Welcome to Lens Cleaner!</h2>
+        <p class="welcome-text">
+          Let's find and remove duplicate photos from your Google Photos library.
+        </p>
+        <div class="instructions">
+          <div class="instruction-step">
+            <div class="instruction-number">1</div>
+            <div class="instruction-text">
+              <strong>Click the extension icon</strong> while on Google Photos
             </div>
           </div>
-        {/each}
+          <div class="instruction-step">
+            <div class="instruction-number">2</div>
+            <div class="instruction-text">
+              <strong>Click "Find Duplicates"</strong> to scan your photos
+            </div>
+          </div>
+          <div class="instruction-step">
+            <div class="instruction-number">3</div>
+            <div class="instruction-text">
+              <strong>Come back here</strong> to see and delete duplicates
+            </div>
+          </div>
+        </div>
       </div>
+
+    {:else if currentStep === 'preview'}
+      <!-- Preview Screen -->
+      <div class="preview-screen">
+        <div class="preview-header">
+          <div>
+            <h2>📷 {$appStore.stats.totalPhotos} Photos Scanned</h2>
+            <p class="preview-subtitle">
+              Review your scanned photos before analyzing for duplicates
+            </p>
+          </div>
+          <div class="preview-actions">
+            <button onclick={handleRescan} class="btn btn-danger-outline">
+              🔄 Rescan Photos
+            </button>
+            <button onclick={handleStartAnalysis} class="btn btn-primary">
+              🔍 Find Duplicates Now
+            </button>
+          </div>
+        </div>
+
+        <div class="photo-grid">
+          {#each $appStore.photos.slice(0, 50) as photo (photo.id)}
+            <div class="photo-preview">
+              <img src="data:image/jpeg;base64,{photo.base64}" alt="Scanned" loading="lazy" />
+            </div>
+          {/each}
+          {#if $appStore.stats.totalPhotos > 50}
+            <div class="photo-preview more-indicator">
+              <div class="more-text">
+                +{$appStore.stats.totalPhotos - 50} more
+              </div>
+            </div>
+          {/if}
+        </div>
+      </div>
+
+    {:else if currentStep === 'analyzing' || currentStep === 'grouping'}
+      <!-- Processing Screen -->
+      <div class="processing-screen">
+        <div class="spinner"></div>
+        <h2>
+          {#if currentStep === 'analyzing'}
+            🧠 Analyzing your photos...
+          {:else}
+            🔍 Finding duplicates...
+          {/if}
+        </h2>
+        <p class="processing-text">
+          This may take a few moments. We're using AI to compare your photos.
+        </p>
+
+        <div class="stats-grid">
+          <div class="stat-box">
+            <div class="stat-number">{$appStore.stats.totalPhotos}</div>
+            <div class="stat-label">Photos Scanned</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-number">{$appStore.stats.photosWithEmbeddings}</div>
+            <div class="stat-label">Photos Analyzed</div>
+          </div>
+        </div>
+
+        {#if $appStore.processingProgress.isProcessing}
+          <div class="progress-container">
+            <div class="progress-bar">
+              <div class="progress-fill" style="width: {($appStore.processingProgress.current / $appStore.processingProgress.total * 100)}%"></div>
+            </div>
+            <div class="progress-info">
+              <span class="progress-text">
+                {$appStore.processingProgress.current} / {$appStore.processingProgress.total}
+              </span>
+              {#if estimatedTimeRemaining > 0}
+                <span class="time-estimate">
+                  ~{formatTimeEstimate(estimatedTimeRemaining)} remaining
+                </span>
+              {/if}
+            </div>
+          </div>
+        {/if}
+      </div>
+
+    {:else if currentStep === 'reviewing'}
+      <!-- Review Screen -->
+      {#if displayGroups.length === 0 && ungroupedPhotos.length === 0}
+        <div class="no-duplicates">
+          <div class="no-duplicates-icon">✨</div>
+          <h2>No duplicates found!</h2>
+          <p>Your photos are already clean.</p>
+          <div class="action-buttons">
+            <button onclick={handleReindex} class="btn btn-secondary">
+              🔄 Reindex with Different Settings
+            </button>
+            <button onclick={handleRescan} class="btn btn-danger-outline">
+              ⚠️ Rescan from Scratch
+            </button>
+          </div>
+        </div>
+      {:else}
+        <div class="review-screen">
+          {#if displayGroups.length > 0}
+            <div class="review-header">
+              <div>
+                <h2>Found {displayGroups.length} duplicate groups</h2>
+                <p class="review-subtitle">
+                  Click photos to mark for deletion
+                </p>
+              </div>
+              <div class="review-actions">
+                {#if $appStore.selectedPhotos.size > 0}
+                  <button onclick={clearSelection} class="btn btn-secondary">
+                    Clear ({$appStore.selectedPhotos.size})
+                  </button>
+                  <button onclick={handleDeleteSelected} class="btn btn-danger">
+                    🗑️ Delete {$appStore.selectedPhotos.size} Photos
+                  </button>
+                {:else}
+                  <button onclick={handleReindex} class="btn btn-secondary">
+                    🔄 Reindex
+                  </button>
+                {/if}
+              </div>
+            </div>
+
+            <!-- Duplicate Groups -->
+            <div class="groups-container">
+              {#each displayGroups as group (group.id)}
+                {#await getGroupPhotos(group)}
+                  <div class="group-card loading">
+                    <div class="loading-spinner"></div>
+                  </div>
+                {:then photos}
+                  <div class="group-card">
+                    <div class="group-header">
+                      <h3>Duplicate Group ({photos.length} photos)</h3>
+                      <button onclick={() => selectAllInGroup(group.id)} class="btn-link">
+                        Select All
+                      </button>
+                    </div>
+                    <div class="group-photos">
+                      {#each photos as photo (photo.id)}
+                        <button
+                          class="photo-card"
+                          class:selected={$appStore.selectedPhotos.has(photo.id)}
+                          onclick={() => togglePhotoSelection(photo.id)}
+                          type="button"
+                        >
+                          <img src="data:image/jpeg;base64,{photo.base64}" alt="Duplicate" loading="lazy" />
+                          <div class="photo-overlay">
+                            {#if $appStore.selectedPhotos.has(photo.id)}
+                              <div class="photo-badge selected">✓ Will Delete</div>
+                            {:else}
+                              <div class="photo-badge">Click to Select</div>
+                            {/if}
+                          </div>
+                        </button>
+                      {/each}
+                    </div>
+                  </div>
+                {/await}
+              {/each}
+            </div>
+          {/if}
+
+          <!-- Ungrouped Photos -->
+          {#if ungroupedPhotos.length > 0}
+            <div class="ungrouped-section">
+              <div class="section-header">
+                <h2>📷 {ungroupedPhotos.length} Unique Photos</h2>
+                <p class="section-subtitle">These photos have no duplicates</p>
+              </div>
+              <div class="ungrouped-grid">
+                {#each ungroupedPhotos.slice(0, 100) as photo (photo.id)}
+                  <div class="ungrouped-photo">
+                    <img src="data:image/jpeg;base64,{photo.base64}" alt="Unique" loading="lazy" />
+                  </div>
+                {/each}
+                {#if ungroupedPhotos.length > 100}
+                  <div class="ungrouped-photo more-indicator">
+                    <div class="more-text">
+                      +{ungroupedPhotos.length - 100} more
+                    </div>
+                  </div>
+                {/if}
+              </div>
+            </div>
+          {/if}
+        </div>
+      {/if}
     {/if}
   </main>
 </div>
@@ -315,107 +478,369 @@
   <div class="modal" onclick={() => showSettings = false}>
     <div class="modal-content" onclick={(e) => e.stopPropagation()}>
       <div class="modal-header">
-        <h2>Settings</h2>
+        <h2>⚙️ Settings</h2>
         <button class="modal-close" onclick={() => showSettings = false}>&times;</button>
       </div>
       <div class="modal-body">
         <div class="setting-group">
-          <label for="similarityThreshold">Similarity Threshold</label>
-          <input
-            type="range"
-            id="similarityThreshold"
-            bind:value={settingsSimilarityThreshold}
-            min="0.7"
-            max="0.98"
-            step="0.01"
-          />
-          <span>{settingsSimilarityThreshold.toFixed(2)}</span>
-          <p class="setting-description">Higher values = stricter matching (only very similar photos)</p>
+          <label for="similarityThreshold">
+            <strong>Match Sensitivity</strong>
+            <span class="setting-hint">How similar photos need to be</span>
+          </label>
+          <div class="slider-container">
+            <span class="slider-label">Loose</span>
+            <input
+              type="range"
+              id="similarityThreshold"
+              bind:value={settings.similarityThreshold}
+              min="0.70"
+              max="0.98"
+              step="0.01"
+              class="slider"
+            />
+            <span class="slider-label">Strict</span>
+          </div>
+          <span class="slider-value">{(settings.similarityThreshold * 100).toFixed(0)}% match required</span>
         </div>
+
         <div class="setting-group">
-          <label for="timeWindow">Time Window (minutes)</label>
+          <label for="timeWindow">
+            <strong>Time Window</strong>
+            <span class="setting-hint">Photos taken within this time can be grouped</span>
+          </label>
           <input
             type="number"
             id="timeWindow"
-            bind:value={settingsTimeWindow}
+            bind:value={settings.timeWindowMinutes}
             min="5"
             max="1440"
+            class="input"
           />
-          <p class="setting-description">Photos taken within this time window can be grouped</p>
+          <span class="input-suffix">minutes</span>
         </div>
+
         <div class="setting-group">
-          <label for="maxPhotos">Max Photos to Process</label>
+          <label for="minGroupSize">
+            <strong>Minimum Photos per Group</strong>
+            <span class="setting-hint">Only show groups with at least this many photos</span>
+          </label>
           <input
             type="number"
-            id="maxPhotos"
-            bind:value={settingsMaxPhotos}
-            min="10"
-            max="10000"
+            id="minGroupSize"
+            bind:value={settings.minGroupSize}
+            min="2"
+            max="10"
+            class="input"
           />
-          <p class="setting-description">Maximum number of photos to process (more = longer processing)</p>
+          <span class="input-suffix">photos</span>
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-primary" onclick={handleSaveSettings}>Save Settings</button>
+        <button class="btn btn-secondary" onclick={() => showSettings = false}>Cancel</button>
+        <button class="btn btn-primary" onclick={handleSaveSettings}>Save & Reindex</button>
       </div>
     </div>
   </div>
 {/if}
 
 <style>
-  /* Component Styles */
-  .header {
-    background: white;
-    border-radius: 16px;
-    padding: 24px 32px;
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.1);
-    margin-bottom: 24px;
+  :global(body) {
+    margin: 0;
+    padding: 0;
+    background: #f5f7fa;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   }
 
-  .header-content {
+  .app-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 32px 20px;
+  }
+
+  /* Header */
+  .header {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    margin-bottom: 40px;
+  }
+
+  .header-content {
+    text-align: center;
+    flex: 1;
   }
 
   .logo {
-    font-size: 28px;
+    font-size: 36px;
     font-weight: 700;
     color: #667eea;
+    margin: 0 0 8px 0;
+  }
+
+  .subtitle {
+    font-size: 18px;
+    color: #64748b;
+    margin: 0;
+  }
+
+  .settings-btn {
+    padding: 10px 20px;
+    background: #f1f5f9;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .settings-btn:hover {
+    background: #e2e8f0;
+  }
+
+  /* Steps */
+  .steps {
     display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 48px;
+    padding: 0 20px;
+  }
+
+  .step {
+    display: flex;
+    flex-direction: column;
     align-items: center;
     gap: 8px;
   }
 
-  .header-actions {
+  .step-number {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: #e2e8f0;
+    color: #94a3b8;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 20px;
+    transition: all 0.3s;
+  }
+
+  .step.active .step-number {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+  }
+
+  .step.done .step-number {
+    background: #10b981;
+    color: white;
+  }
+
+  .step-label {
+    font-size: 14px;
+    font-weight: 600;
+    color: #64748b;
+  }
+
+  .step.active .step-label {
+    color: #667eea;
+  }
+
+  .step-line {
+    width: 80px;
+    height: 3px;
+    background: #e2e8f0;
+    transition: all 0.3s;
+  }
+
+  .step-line.done {
+    background: #10b981;
+  }
+
+  /* Main Content */
+  .main-content {
+    background: white;
+    border-radius: 20px;
+    padding: 48px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+    min-height: 400px;
+  }
+
+  /* Welcome Screen */
+  .welcome-screen {
+    text-align: center;
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 40px 20px;
+  }
+
+  .welcome-icon {
+    font-size: 80px;
+    margin-bottom: 24px;
+  }
+
+  .welcome-screen h2 {
+    font-size: 32px;
+    color: #1e293b;
+    margin-bottom: 16px;
+  }
+
+  .welcome-text {
+    font-size: 18px;
+    color: #64748b;
+    margin-bottom: 48px;
+    line-height: 1.6;
+  }
+
+  .instructions {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    text-align: left;
+  }
+
+  .instruction-step {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    background: #f8fafc;
+    padding: 20px;
+    border-radius: 12px;
+  }
+
+  .instruction-number {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  .instruction-text {
+    font-size: 16px;
+    color: #475569;
+    line-height: 1.6;
+  }
+
+  /* Preview Screen */
+  .preview-screen {
+    padding: 20px;
+  }
+
+  .preview-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 32px;
+    padding-bottom: 24px;
+    border-bottom: 2px solid #e2e8f0;
+  }
+
+  .preview-header h2 {
+    font-size: 28px;
+    color: #1e293b;
+    margin: 0 0 8px 0;
+  }
+
+  .preview-subtitle {
+    font-size: 16px;
+    color: #64748b;
+    margin: 0;
+  }
+
+  .preview-actions {
     display: flex;
     gap: 12px;
   }
 
-  /* Stats Bar */
-  .stats-bar {
+  .photo-grid, .ungrouped-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
     gap: 16px;
-    margin-bottom: 24px;
   }
 
-  .stat-card {
-    background: white;
-    border-radius: 12px;
-    padding: 20px;
+  .photo-preview, .ungrouped-photo {
+    aspect-ratio: 1;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #f1f5f9;
+  }
+
+  .photo-preview img, .ungrouped-photo img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .more-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+  }
+
+  .more-text {
+    font-size: 18px;
+    font-weight: 600;
+  }
+
+  /* Processing Screen */
+  .processing-screen {
     text-align: center;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-    transition: transform 0.2s;
+    padding: 60px 20px;
   }
 
-  .stat-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  .spinner {
+    width: 60px;
+    height: 60px;
+    border: 5px solid #e2e8f0;
+    border-top-color: #667eea;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 32px;
   }
 
-  .stat-value {
-    font-size: 32px;
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  .processing-screen h2 {
+    font-size: 28px;
+    color: #1e293b;
+    margin-bottom: 12px;
+  }
+
+  .processing-text {
+    font-size: 16px;
+    color: #64748b;
+    margin-bottom: 40px;
+  }
+
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 20px;
+    max-width: 500px;
+    margin: 0 auto 32px;
+  }
+
+  .stat-box {
+    background: #f8fafc;
+    padding: 24px;
+    border-radius: 12px;
+  }
+
+  .stat-number {
+    font-size: 36px;
     font-weight: 700;
     color: #667eea;
     margin-bottom: 8px;
@@ -423,45 +848,235 @@
 
   .stat-label {
     font-size: 14px;
-    color: #666;
+    color: #64748b;
     text-transform: uppercase;
     letter-spacing: 0.5px;
   }
 
-  /* Action Bar */
-  .action-bar {
-    background: white;
-    border-radius: 16px;
-    padding: 24px;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  .progress-container {
+    max-width: 600px;
+    margin: 32px auto 0;
+  }
+
+  .progress-bar {
+    width: 100%;
+    height: 12px;
+    background: #e2e8f0;
+    border-radius: 6px;
+    overflow: hidden;
+    margin-bottom: 12px;
+  }
+
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+    transition: width 0.3s;
+    box-shadow: 0 0 10px rgba(102, 126, 234, 0.5);
+  }
+
+  .progress-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .progress-text {
+    font-size: 14px;
+    color: #64748b;
+    font-weight: 600;
+  }
+
+  .time-estimate {
+    font-size: 14px;
+    color: #667eea;
+    font-weight: 600;
+  }
+
+  /* No Duplicates */
+  .no-duplicates {
+    text-align: center;
+    padding: 80px 20px;
+  }
+
+  .no-duplicates-icon {
+    font-size: 80px;
     margin-bottom: 24px;
   }
 
-  .action-section {
-    margin-bottom: 20px;
-  }
-
-  .action-section:last-child {
-    margin-bottom: 0;
-  }
-
-  .action-section h2 {
-    font-size: 18px;
+  .no-duplicates h2 {
+    font-size: 32px;
+    color: #1e293b;
     margin-bottom: 12px;
-    color: #333;
+  }
+
+  .no-duplicates p {
+    font-size: 18px;
+    color: #64748b;
+    margin-bottom: 32px;
   }
 
   .action-buttons {
     display: flex;
     gap: 12px;
-    flex-wrap: wrap;
+    justify-content: center;
   }
 
-  .filter-controls {
+  /* Review Screen */
+  .review-header {
     display: flex;
-    gap: 16px;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 32px;
+    padding-bottom: 24px;
+    border-bottom: 2px solid #e2e8f0;
+  }
+
+  .review-header h2 {
+    font-size: 28px;
+    color: #1e293b;
+    margin: 0 0 8px 0;
+  }
+
+  .review-subtitle {
+    font-size: 16px;
+    color: #64748b;
+    margin: 0;
+  }
+
+  .review-actions {
+    display: flex;
+    gap: 12px;
+  }
+
+  /* Groups */
+  .groups-container {
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+    margin-bottom: 48px;
+  }
+
+  .group-card {
+    background: #f8fafc;
+    border-radius: 16px;
+    padding: 24px;
+    border: 2px solid #e2e8f0;
+    transition: all 0.2s;
+  }
+
+  .group-card:hover {
+    border-color: #667eea;
+    box-shadow: 0 4px 16px rgba(102, 126, 234, 0.1);
+  }
+
+  .group-card.loading {
+    min-height: 200px;
+    display: flex;
     align-items: center;
-    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .loading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid #e2e8f0;
+    border-top-color: #667eea;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+
+  .group-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+  }
+
+  .group-header h3 {
+    font-size: 20px;
+    color: #1e293b;
+    margin: 0;
+  }
+
+  .group-photos {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 16px;
+  }
+
+  .photo-card {
+    position: relative;
+    aspect-ratio: 1;
+    border-radius: 12px;
+    overflow: hidden;
+    cursor: pointer;
+    border: 3px solid transparent;
+    transition: all 0.2s;
+    background: none;
+    padding: 0;
+  }
+
+  .photo-card:hover {
+    transform: scale(1.05);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  }
+
+  .photo-card.selected {
+    border-color: #ef4444;
+  }
+
+  .photo-card img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .photo-overlay {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(to top, rgba(0,0,0,0.7), transparent);
+    padding: 12px;
+    display: flex;
+    justify-content: center;
+  }
+
+  .photo-badge {
+    background: rgba(255, 255, 255, 0.9);
+    color: #1e293b;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .photo-badge.selected {
+    background: #ef4444;
+    color: white;
+  }
+
+  /* Ungrouped Section */
+  .ungrouped-section {
+    margin-top: 48px;
+    padding-top: 48px;
+    border-top: 3px dashed #e2e8f0;
+  }
+
+  .section-header {
+    margin-bottom: 24px;
+  }
+
+  .section-header h2 {
+    font-size: 24px;
+    color: #1e293b;
+    margin: 0 0 8px 0;
+  }
+
+  .section-subtitle {
+    font-size: 16px;
+    color: #64748b;
+    margin: 0;
   }
 
   /* Buttons */
@@ -469,286 +1084,67 @@
     padding: 12px 24px;
     border: none;
     border-radius: 8px;
-    font-size: 14px;
+    font-size: 15px;
     font-weight: 600;
     cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
     transition: all 0.2s;
     white-space: nowrap;
-  }
-
-  .btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
   }
 
   .btn-primary {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
   }
 
-  .btn-primary:hover:not(:disabled) {
+  .btn-primary:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
   }
 
   .btn-secondary {
-    background: #f3f4f6;
-    color: #333;
+    background: #e2e8f0;
+    color: #475569;
   }
 
-  .btn-secondary:hover:not(:disabled) {
-    background: #e5e7eb;
+  .btn-secondary:hover {
+    background: #cbd5e1;
   }
 
   .btn-danger {
     background: #ef4444;
     color: white;
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
   }
 
-  .btn-danger:hover:not(:disabled) {
+  .btn-danger:hover {
     background: #dc2626;
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+    box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4);
   }
 
-  .btn-sm {
-    padding: 8px 16px;
-    font-size: 12px;
-  }
-
-  /* Select & Input */
-  .select {
-    padding: 10px 16px;
-    border: 2px solid #e5e7eb;
-    border-radius: 8px;
-    font-size: 14px;
+  .btn-danger-outline {
     background: white;
-    cursor: pointer;
-    transition: border-color 0.2s;
+    color: #ef4444;
+    border: 2px solid #ef4444;
   }
 
-  .select:focus {
-    outline: none;
-    border-color: #667eea;
+  .btn-danger-outline:hover {
+    background: #fef2f2;
   }
 
-  .slider {
-    width: 150px;
-    height: 6px;
-    border-radius: 3px;
-    background: #e5e7eb;
-    outline: none;
-    -webkit-appearance: none;
-  }
-
-  .slider::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 18px;
-    height: 18px;
-    border-radius: 50%;
-    background: #667eea;
-    cursor: pointer;
-  }
-
-  .slider::-moz-range-thumb {
-    width: 18px;
-    height: 18px;
-    border-radius: 50%;
-    background: #667eea;
-    cursor: pointer;
+  .btn-link {
+    background: none;
     border: none;
-  }
-
-  /* Progress Bar */
-  .progress-bar {
-    background: white;
-    border-radius: 12px;
-    padding: 20px;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-    margin-bottom: 24px;
-  }
-
-  .progress-text {
-    font-weight: 600;
-    margin-bottom: 12px;
-    color: #333;
-  }
-
-  .progress-track {
-    width: 100%;
-    height: 8px;
-    background: #e5e7eb;
-    border-radius: 4px;
-    overflow: hidden;
-    margin-bottom: 8px;
-  }
-
-  .progress-fill {
-    height: 100%;
-    background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-    border-radius: 4px;
-    transition: width 0.3s ease;
-  }
-
-  .progress-details {
+    color: #667eea;
     font-size: 14px;
-    color: #666;
-  }
-
-  /* Main Content */
-  .main-content {
-    background: white;
-    border-radius: 16px;
-    padding: 32px;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-    min-height: 400px;
-  }
-
-  /* Empty State */
-  .empty-state {
-    text-align: center;
-    padding: 60px 20px;
-  }
-
-  .empty-icon {
-    font-size: 80px;
-    margin-bottom: 20px;
-  }
-
-  .empty-state h2 {
-    font-size: 28px;
-    margin-bottom: 12px;
-    color: #333;
-  }
-
-  .empty-state p {
-    font-size: 16px;
-    color: #666;
-    margin-bottom: 32px;
-  }
-
-  .instructions {
-    text-align: left;
-    max-width: 500px;
-    margin: 0 auto;
-    background: #f9fafb;
-    padding: 24px;
-    border-radius: 12px;
-    line-height: 1.8;
-  }
-
-  .instructions li {
-    margin-bottom: 12px;
-    color: #555;
-  }
-
-  /* Groups Container */
-  .groups-container {
-    display: flex;
-    flex-direction: column;
-    gap: 32px;
-  }
-
-  /* Group Card */
-  .group-card {
-    border: 2px solid #e5e7eb;
-    border-radius: 16px;
-    padding: 24px;
-    background: #fafafa;
-    transition: all 0.2s;
-  }
-
-  .group-card:hover {
-    border-color: #667eea;
-    box-shadow: 0 4px 16px rgba(102, 126, 234, 0.15);
-  }
-
-  .group-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 16px;
-  }
-
-  .group-info {
-    display: flex;
-    gap: 16px;
-    align-items: center;
-  }
-
-  .group-badge {
-    background: #667eea;
-    color: white;
-    padding: 6px 12px;
-    border-radius: 20px;
-    font-size: 12px;
     font-weight: 600;
-  }
-
-  .group-meta {
-    font-size: 14px;
-    color: #666;
-  }
-
-  .group-actions {
-    display: flex;
-    gap: 8px;
-  }
-
-  .group-photos {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    gap: 12px;
-  }
-
-  .photo-item {
-    position: relative;
-    aspect-ratio: 1;
-    border-radius: 8px;
-    overflow: hidden;
     cursor: pointer;
-    border: 3px solid transparent;
-    transition: all 0.2s;
+    padding: 4px 8px;
   }
 
-  .photo-item:hover {
-    transform: scale(1.05);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-  }
-
-  .photo-item.selected {
-    border-color: #667eea;
-  }
-
-  .photo-item img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-
-  .photo-checkbox {
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    width: 24px;
-    height: 24px;
-    background: white;
-    border: 2px solid #667eea;
-    border-radius: 4px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 16px;
-  }
-
-  .photo-checkbox.checked {
-    background: #667eea;
-    color: white;
+  .btn-link:hover {
+    text-decoration: underline;
   }
 
   /* Modal */
@@ -772,6 +1168,8 @@
     width: 90%;
     max-width: 600px;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    max-height: 90vh;
+    overflow-y: auto;
   }
 
   .modal-header {
@@ -779,12 +1177,13 @@
     justify-content: space-between;
     align-items: center;
     padding: 24px;
-    border-bottom: 1px solid #e5e7eb;
+    border-bottom: 1px solid #e2e8f0;
   }
 
   .modal-header h2 {
     font-size: 24px;
-    color: #333;
+    color: #1e293b;
+    margin: 0;
   }
 
   .modal-close {
@@ -809,13 +1208,14 @@
 
   .modal-footer {
     padding: 24px;
-    border-top: 1px solid #e5e7eb;
+    border-top: 1px solid #e2e8f0;
     display: flex;
     justify-content: flex-end;
+    gap: 12px;
   }
 
   .setting-group {
-    margin-bottom: 24px;
+    margin-bottom: 32px;
   }
 
   .setting-group:last-child {
@@ -823,53 +1223,128 @@
   }
 
   .setting-group label {
-    display: block;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 12px;
+  }
+
+  .setting-hint {
+    font-size: 13px;
+    color: #64748b;
+    font-weight: 400;
+  }
+
+  .slider-container {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+  }
+
+  .slider-label {
+    font-size: 13px;
+    color: #64748b;
+    min-width: 50px;
+  }
+
+  .slider {
+    flex: 1;
+    height: 6px;
+    border-radius: 3px;
+    background: #e2e8f0;
+    outline: none;
+    -webkit-appearance: none;
+  }
+
+  .slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #667eea;
+    cursor: pointer;
+  }
+
+  .slider::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #667eea;
+    cursor: pointer;
+    border: none;
+  }
+
+  .slider-value {
+    font-size: 14px;
+    color: #667eea;
     font-weight: 600;
-    margin-bottom: 8px;
-    color: #333;
   }
 
-  .setting-group input[type="range"] {
-    width: 100%;
-    margin-bottom: 8px;
-  }
-
-  .setting-group input[type="number"] {
+  .input {
     width: 100%;
     padding: 10px;
-    border: 2px solid #e5e7eb;
+    border: 2px solid #e2e8f0;
     border-radius: 8px;
     font-size: 14px;
+    margin-bottom: 4px;
   }
 
-  .setting-description {
+  .input:focus {
+    outline: none;
+    border-color: #667eea;
+  }
+
+  .input-suffix {
     font-size: 13px;
-    color: #666;
-    margin-top: 4px;
+    color: #64748b;
   }
 
   /* Responsive */
   @media (max-width: 768px) {
-    .header-content {
+    .main-content {
+      padding: 24px;
+    }
+
+    .header {
       flex-direction: column;
       gap: 16px;
     }
 
-    .stats-bar {
-      grid-template-columns: repeat(2, 1fr);
+    .review-header, .preview-header {
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .review-actions, .preview-actions {
+      width: 100%;
+      flex-direction: column;
+    }
+
+    .review-actions .btn, .preview-actions .btn {
+      width: 100%;
+    }
+
+    .group-photos, .photo-grid, .ungrouped-grid {
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    }
+
+    .steps {
+      transform: scale(0.85);
+    }
+
+    .step-line {
+      width: 40px;
     }
 
     .action-buttons {
       flex-direction: column;
-    }
-
-    .btn {
       width: 100%;
-      justify-content: center;
     }
 
-    .group-photos {
-      grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    .action-buttons .btn {
+      width: 100%;
     }
   }
 </style>

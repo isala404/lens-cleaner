@@ -12,43 +12,54 @@
     }
 
     body {
-      width: 350px;
-      min-height: 400px;
-      max-height: 600px;
-      padding: 20px;
+      width: 380px;
+      min-height: 420px;
+      padding: 24px;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       color: white;
-      overflow-y: auto;
     }
 
     .header {
       text-align: center;
-      margin-bottom: 24px;
+      margin-bottom: 28px;
     }
 
     .logo {
-      font-size: 48px;
-      margin-bottom: 8px;
+      font-size: 56px;
+      margin-bottom: 12px;
+      animation: float 3s ease-in-out infinite;
+    }
+
+    @keyframes float {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-10px); }
     }
 
     h1 {
-      font-size: 24px;
+      font-size: 26px;
       font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .tagline {
+      font-size: 14px;
+      opacity: 0.9;
     }
 
     .stats {
-      background: rgba(255, 255, 255, 0.2);
-      border-radius: 12px;
-      padding: 16px;
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 14px;
+      padding: 18px;
       margin-bottom: 20px;
       backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
     }
 
     .stat-row {
       display: flex;
       justify-content: space-between;
-      padding: 8px 0;
+      padding: 10px 0;
       border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     }
 
@@ -58,12 +69,12 @@
 
     .stat-label {
       font-size: 14px;
-      opacity: 0.9;
+      opacity: 0.95;
     }
 
     .stat-value {
       font-weight: 700;
-      font-size: 16px;
+      font-size: 18px;
     }
 
     .actions {
@@ -73,10 +84,10 @@
     }
 
     .btn {
-      padding: 12px 20px;
+      padding: 16px 24px;
       border: none;
-      border-radius: 8px;
-      font-size: 14px;
+      border-radius: 10px;
+      font-size: 16px;
       font-weight: 600;
       cursor: pointer;
       background: white;
@@ -85,15 +96,16 @@
       text-align: center;
       text-decoration: none;
       display: block;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     }
 
-    .btn:hover {
+    .btn:hover:not(:disabled) {
       transform: translateY(-2px);
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
     }
 
     .btn:disabled {
-      opacity: 0.5;
+      opacity: 0.6;
       cursor: not-allowed;
       transform: none;
     }
@@ -101,32 +113,80 @@
     .btn-primary {
       background: white;
       color: #667eea;
+      font-size: 18px;
+      padding: 18px 24px;
     }
 
     .btn-secondary {
-      background: rgba(255, 255, 255, 0.2);
+      background: rgba(255, 255, 255, 0.25);
       color: white;
       backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+    }
+
+    .btn-danger-outline {
+      background: rgba(239, 68, 68, 0.1);
+      color: #ef4444;
+      border: 2px solid #ef4444;
+    }
+
+    .btn-danger-outline:hover:not(:disabled) {
+      background: rgba(239, 68, 68, 0.2);
     }
 
     .message {
       background: rgba(255, 255, 255, 0.2);
-      padding: 12px;
-      border-radius: 8px;
-      margin-bottom: 12px;
+      padding: 14px 16px;
+      border-radius: 10px;
+      margin-bottom: 16px;
       font-size: 14px;
       text-align: center;
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+    }
+
+    .message.success {
+      background: rgba(52, 211, 153, 0.3);
+      border-color: rgba(52, 211, 153, 0.5);
+    }
+
+    .message.error {
+      background: rgba(248, 113, 113, 0.3);
+      border-color: rgba(248, 113, 113, 0.5);
+    }
+
+    .message.info {
+      background: rgba(147, 197, 253, 0.3);
+      border-color: rgba(147, 197, 253, 0.5);
+    }
+
+    .simple-message {
+      background: rgba(255, 255, 255, 0.15);
+      padding: 16px;
+      border-radius: 10px;
+      margin-bottom: 16px;
+      font-size: 14px;
+      text-align: center;
+      line-height: 1.6;
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
     }
 
     .footer {
       margin-top: 20px;
       text-align: center;
-      font-size: 12px;
-      opacity: 0.8;
+      font-size: 11px;
+      opacity: 0.7;
     }
 
     .hidden {
       display: none !important;
+    }
+
+    .divider {
+      height: 1px;
+      background: rgba(255, 255, 255, 0.2);
+      margin: 16px 0;
     }
   </style>
 </head>
@@ -134,30 +194,29 @@
   <div class="header">
     <div class="logo">📸</div>
     <h1>Lens Cleaner</h1>
+    <div class="tagline">Find & delete duplicate photos</div>
   </div>
 
   <div class="stats">
     <div class="stat-row">
-      <span class="stat-label">Total Photos</span>
-      <span class="stat-value" id="totalPhotos">-</span>
+      <span class="stat-label">📷 Photos Scanned</span>
+      <span class="stat-value" id="totalPhotos">0</span>
     </div>
     <div class="stat-row">
-      <span class="stat-label">Groups Found</span>
-      <span class="stat-value" id="totalGroups">-</span>
-    </div>
-    <div class="stat-row">
-      <span class="stat-label">Processed</span>
-      <span class="stat-value" id="processed">-</span>
+      <span class="stat-label">🔍 Duplicate Groups</span>
+      <span class="stat-value" id="totalGroups">0</span>
     </div>
   </div>
 
+  <div id="message" class="message hidden"></div>
+
   <div id="notOnGooglePhotos" class="hidden">
-    <div class="message">
-      Open Google Photos to start scanning
+    <div class="simple-message">
+      To find duplicates, first open your Google Photos library
     </div>
     <div class="actions">
       <button id="openGooglePhotos" class="btn btn-primary">
-        Open Google Photos
+        🌐 Open Google Photos
       </button>
     </div>
   </div>
@@ -165,22 +224,21 @@
   <div id="onGooglePhotos" class="hidden">
     <div class="actions">
       <button id="startScan" class="btn btn-primary">
-        🔍 Start Scan
+        🔍 Find Duplicates
       </button>
-      <button id="stopScan" class="btn btn-secondary hidden">
-        ⏹️ Stop Scan
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="actions">
+      <button id="openDashboard" class="btn btn-secondary">
+        📊 View Results
       </button>
     </div>
   </div>
 
-  <div class="actions" style="margin-top: 12px;">
-    <button id="openDashboard" class="btn btn-secondary">
-      📊 Open Dashboard
-    </button>
-  </div>
-
   <div class="footer">
-    Lens Cleaner v1.0.0
+    Lens Cleaner v1.0 • AI-powered
   </div>
 
   <script src="popup.js"></script>
