@@ -12,12 +12,16 @@ from pathlib import Path
 from typing import Optional
 
 import aiosqlite
+from dotenv import load_dotenv
 from fastapi import Body, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, EmailStr
 
 from gemini_processor import GeminiProcessor
+
+# Load environment variables
+load_dotenv()
 
 # Configuration
 DATABASE_PATH = "lens_cleaner.db"
@@ -257,10 +261,10 @@ async def mock_checkout_page(checkout_id: str):
 
 
 @app.post("/v1/api/job/{job_id}/upload")
-async def upload_photos(job_id: str, files: list[UploadFile] = File(...)):
+async def upload_photo(job_id: str, file: UploadFile = File(...)):
     """
-    Upload photos for a job
-    Photos are saved as individual files in the job's upload directory
+    Upload a single photo for a job (atomic upload)
+    Frontend should send photos one at a time with up to 5 concurrent requests
     """
     # Verify job exists
     async with aiosqlite.connect(DATABASE_PATH) as db:
@@ -277,22 +281,21 @@ async def upload_photos(job_id: str, files: list[UploadFile] = File(...)):
     if status not in ["created", "uploaded"]:
         raise HTTPException(status_code=400, detail="Job is already processing or completed")
 
-    # Save uploaded files
+    # Save uploaded file
     upload_path = Path(upload_dir)
     upload_path.mkdir(exist_ok=True)
 
-    for file in files:
-        file_path = upload_path / file.filename
-        content = await file.read()
-        with open(file_path, "wb") as f:
-            f.write(content)
+    file_path = upload_path / file.filename
+    content = await file.read()
+    with open(file_path, "wb") as f:
+        f.write(content)
 
-    # Update job status
+    # Update job status to uploaded (will stay uploaded until processing starts)
     async with aiosqlite.connect(DATABASE_PATH) as db:
         await db.execute("UPDATE jobs SET status = ? WHERE id = ?", ("uploaded", job_id))
         await db.commit()
 
-    return {"message": f"Uploaded {len(files)} photos", "job_id": job_id}
+    return {"message": "Photo uploaded", "job_id": job_id, "filename": file.filename}
 
 
 @app.post("/v1/api/job/{job_id}")

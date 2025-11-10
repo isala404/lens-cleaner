@@ -21,12 +21,9 @@ function blobToFile(blob: Blob, filename: string): File {
 }
 
 /**
- * Upload all grouped photos for auto-select
+ * Prepare photos for upload (convert blobs to files)
  */
-export async function uploadPhotosForAutoSelect(
-	photos: Photo[],
-	onProgress: (progress: number) => void
-): Promise<{
+export async function preparePhotosForAutoSelect(photos: Photo[]): Promise<{
 	files: File[];
 	photoMetadata: Array<{ id: string; filename: string; group_id: string | null }>;
 }> {
@@ -34,8 +31,7 @@ export async function uploadPhotosForAutoSelect(
 	const photoMetadata: Array<{ id: string; filename: string; group_id: string | null }> = [];
 
 	// Convert blobs to files
-	for (let i = 0; i < photos.length; i++) {
-		const photo = photos[i];
+	for (const photo of photos) {
 		const filename = `${photo.id}.jpg`;
 		const file = blobToFile(photo.blob, filename);
 		files.push(file);
@@ -44,10 +40,6 @@ export async function uploadPhotosForAutoSelect(
 			filename,
 			group_id: photo.groupId
 		});
-
-		// Report progress
-		const progress = Math.round(((i + 1) / photos.length) * 50); // 0-50% for conversion
-		onProgress(progress);
 	}
 
 	return { files, photoMetadata };

@@ -183,11 +183,11 @@ class GeminiProcessor:
 
     async def _upload_jsonl(self, jsonl_path: Path, job_id: str) -> Any:
         """Upload JSONL file to Gemini Files API"""
+        # Note: Do not specify mime_type for JSONL batch requests
+        # The API will infer it from the file content
         uploaded_file = self.client.files.upload(
             file=str(jsonl_path),
-            config=types.UploadFileConfig(
-                display_name=f"lens-cleaner-{job_id}", mime_type="application/jsonl"
-            ),
+            config=types.UploadFileConfig(display_name=f"lens-cleaner-{job_id}"),
         )
         return uploaded_file
 

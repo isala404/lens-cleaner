@@ -32,12 +32,12 @@
 
 			const response = await createCheckout(email, photoCount);
 
-			// Extract job_id from checkout URL
-			// The backend will redirect back with job_id as a URL parameter
-			// For now, we'll extract it from the checkout_id
-			const jobId = response.checkout_id; // This will be updated when payment completes
-
+			// Save checkout info before navigating
+			const jobId = response.checkout_id;
 			onCheckoutCreated(response.checkout_url, jobId);
+
+			// Navigate to checkout page in same window
+			window.location.href = response.checkout_url;
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to create checkout';
 			isSubmitting = false;

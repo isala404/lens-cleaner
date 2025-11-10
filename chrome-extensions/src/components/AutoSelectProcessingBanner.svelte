@@ -38,22 +38,7 @@
 				</div>
 			</div>
 
-			<div class="rounded-lg border-2 border-purple-300 bg-white p-4">
-				<p class="mb-2 text-sm font-bold text-purple-900">What's happening:</p>
-				<ul class="space-y-1 text-sm text-gray-700">
-					<li class="flex items-center gap-2">
-						<span class="text-purple-500">✓</span> Grouping similar photos
-					</li>
-					<li class="flex items-center gap-2">
-						<span class="text-purple-500">✓</span> Analyzing quality and composition
-					</li>
-					<li class="flex items-center gap-2">
-						<span class="text-purple-500">⏳</span> Identifying best versions to keep
-					</li>
-				</ul>
-			</div>
-
-			<p class="mt-4 text-center text-sm font-semibold text-gray-600">
+			<p class="text-center text-sm font-semibold text-gray-600">
 				Check back in a few hours. We'll have your results ready!
 			</p>
 

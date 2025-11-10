@@ -22,6 +22,7 @@
 	export let autoSelectStatus:
 		| 'idle'
 		| 'payment'
+		| 'ready'
 		| 'uploading'
 		| 'processing'
 		| 'completed'
@@ -30,6 +31,7 @@
 	export let autoSelectError: string = '';
 	export let onAutoSelect: () => void;
 	export let onCheckoutCreated: (checkoutUrl: string, jobId: string) => void;
+	export let onStartUpload: () => void;
 	export let totalPhotosCount: number = 0;
 
 	let showPaymentModal = false;
@@ -94,7 +96,9 @@
 					<button
 						onclick={onRegroup}
 						class="self-start rounded-lg border-2 border-black bg-gray-200 px-4 py-2 text-sm font-bold text-brutalist-gray transition-all hover:bg-gray-300"
-						disabled={autoSelectStatus === 'processing' || autoSelectStatus === 'uploading'}
+						disabled={autoSelectStatus === 'processing' ||
+							autoSelectStatus === 'uploading' ||
+							autoSelectStatus === 'ready'}
 					>
 						← Regroup
 					</button>
@@ -115,6 +119,16 @@
 							class="shadow-brutalist hover:shadow-brutalist-lg rounded-xl border-4 border-black bg-gradient-to-r from-purple-500 to-pink-500 px-6 py-3 text-lg font-black whitespace-nowrap text-white transition-all hover:translate-x-[-2px] hover:translate-y-[-2px]"
 						>
 							🤖 Auto Select
+						</button>
+					{/if}
+
+					<!-- Start Upload button (shown when ready) -->
+					{#if autoSelectStatus === 'ready'}
+						<button
+							onclick={onStartUpload}
+							class="shadow-brutalist hover:shadow-brutalist-lg rounded-xl border-4 border-black bg-gradient-to-r from-green-500 to-emerald-500 px-6 py-3 text-lg font-black whitespace-nowrap text-white transition-all hover:translate-x-[-2px] hover:translate-y-[-2px]"
+						>
+							⬆️ Start Upload
 						</button>
 					{/if}
 

@@ -20,7 +20,7 @@
 
 	import db, { type Group, type Photo } from './lib/db';
 	import { uploadPhotos, startProcessing, getJobStatus } from './lib/api';
-	import { uploadPhotosForAutoSelect, pollJobStatus, applyAISuggestions } from './lib/autoSelect';
+	import { preparePhotosForAutoSelect, pollJobStatus, applyAISuggestions } from './lib/autoSelect';
 
 	// Components
 	import Header from './components/Header.svelte';
@@ -43,8 +43,14 @@
 	let estimatedTimeRemaining = 0;
 
 	// Auto-select state
-	let autoSelectStatus: 'idle' | 'payment' | 'uploading' | 'processing' | 'completed' | 'failed' =
-		'idle';
+	let autoSelectStatus:
+		| 'idle'
+		| 'payment'
+		| 'ready'
+		| 'uploading'
+		| 'processing'
+		| 'completed'
+		| 'failed' = 'idle';
 	let autoSelectProgress = 0;
 	let autoSelectError = '';
 	let autoSelectJobId: string | null = null;
@@ -148,7 +154,7 @@
 		const paymentStatus = urlParams.get('payment');
 
 		if (jobId && paymentStatus === 'success') {
-			// Save job ID and start processing
+			// Save job ID and set ready status
 			autoSelectJobId = jobId;
 			localStorage.setItem('autoSelectJobId', jobId);
 			await db.saveAutoSelectJob({
@@ -162,8 +168,8 @@
 			// Clear URL parameters
 			window.history.replaceState({}, document.title, window.location.pathname);
 
-			// Start upload process
-			await handleAutoSelectUpload();
+			// Set status to ready - user must click button to start upload
+			autoSelectStatus = 'ready';
 		} else {
 			// Check if there's a saved job in progress
 			const savedJobId = localStorage.getItem('autoSelectJobId');
@@ -289,15 +295,15 @@
 
 	async function handleCheckoutCreated(checkoutUrl: string, jobId: string) {
 		// Store job ID for when payment completes
+		// Note: PaymentModal will handle navigation to checkout page
 		autoSelectJobId = jobId;
 		localStorage.setItem('autoSelectJobId', jobId);
-		// Open checkout page
-		window.open(checkoutUrl, '_blank');
 	}
 
 	async function handleAutoSelectUpload() {
 		try {
 			autoSelectStatus = 'uploading';
+			autoSelectProgress = 0;
 
 			// Get all photos with embeddings
 			const photos = await db.getAllPhotos();
@@ -307,21 +313,20 @@
 				throw new Error('No photos to upload');
 			}
 
-			// Convert and upload
-			const { files, photoMetadata } = await uploadPhotosForAutoSelect(
-				photosWithEmbeddings,
-				(progress) => {
-					autoSelectProgress = progress;
-				}
-			);
-
 			if (!autoSelectJobId) {
 				throw new Error('No job ID found');
 			}
 
-			// Upload files
-			await uploadPhotos(autoSelectJobId, files);
-			autoSelectProgress = 75;
+			// Prepare photos (convert blobs to files)
+			const { files, photoMetadata } = await preparePhotosForAutoSelect(photosWithEmbeddings);
+
+			// Upload files with atomic requests (5 concurrent)
+			await uploadPhotos(autoSelectJobId, files, (uploaded, total) => {
+				// Map upload progress to 0-80% range
+				autoSelectProgress = Math.round((uploaded / total) * 80);
+			});
+
+			autoSelectProgress = 85;
 
 			// Start processing
 			await startProcessing(autoSelectJobId, photoMetadata);
@@ -643,6 +648,7 @@
 				{autoSelectError}
 				onAutoSelect={handleAutoSelect}
 				onCheckoutCreated={handleCheckoutCreated}
+				onStartUpload={handleAutoSelectUpload}
 				totalPhotosCount={$appStore.stats.photosWithEmbeddings}
 			/>
 		{/if}
