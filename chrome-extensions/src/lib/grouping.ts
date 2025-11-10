@@ -24,11 +24,195 @@ export interface GroupingStats {
 	minGroupSize: number;
 }
 
+export interface GroupingProgress {
+	photosProcessed: number;
+	totalPhotos: number;
+	groupsFound: number;
+	currentBatch: number;
+	totalBatches: number;
+}
+
 export class GroupingProcessor {
 	private groups: PhotoGroup[] = [];
 
 	/**
-	 * Group similar photos based on embeddings and time taken
+	 * Group similar photos based on embeddings and time taken (BATCHED VERSION)
+	 * Processes photos in batches with delays to prevent UI freezing
+	 * @param photos - Array of photo objects with embeddings
+	 * @param embeddingMap - Map of photoId -> embedding array
+	 * @param similarityThreshold - Minimum similarity score (0-1)
+	 * @param timeWindowMinutes - Maximum time difference in minutes
+	 * @param onProgress - Callback for progress updates
+	 * @param batchSize - Number of photos to process per batch (default: 50)
+	 * @returns Array of groups
+	 */
+	async groupSimilarPhotosBatched(
+		photos: Photo[],
+		embeddingMap: Map<string, number[]>,
+		similarityThreshold: number = 0.6,
+		timeWindowMinutes: number = 60,
+		onProgress?: (progress: GroupingProgress) => void,
+		batchSize: number = 50
+	): Promise<PhotoGroup[]> {
+		console.log(`Grouping ${photos.length} photos in batches of ${batchSize}...`);
+		console.log(`Similarity threshold: ${similarityThreshold}`);
+		console.log(`Time window: ${timeWindowMinutes} minutes`);
+
+		// Sort photos by date taken
+		const sortedPhotos = [...photos].sort((a, b) => {
+			return new Date(a.dateTaken).getTime() - new Date(b.dateTaken).getTime();
+		});
+
+		const groups: PhotoGroup[] = [];
+		const assignedPhotos = new Set<string>();
+		const timeWindowSeconds = timeWindowMinutes * 60;
+		const totalPhotos = sortedPhotos.length;
+		const totalBatches = Math.ceil(totalPhotos / batchSize);
+
+		// Process photos in batches
+		for (let batchIdx = 0; batchIdx < totalBatches; batchIdx++) {
+			const batchStart = batchIdx * batchSize;
+			const batchEnd = Math.min(batchStart + batchSize, totalPhotos);
+			const batch = sortedPhotos.slice(batchStart, batchEnd);
+
+			// Process this batch
+			for (let i = 0; i < batch.length; i++) {
+				const globalIdx = batchStart + i;
+				const photo1 = batch[i];
+
+				// Skip if already assigned to a group
+				if (assignedPhotos.has(photo1.id)) {
+					continue;
+				}
+
+				const embedding1 = embeddingMap.get(photo1.id);
+				if (!embedding1) {
+					continue;
+				}
+
+				// Mark photo1 as processed immediately
+				assignedPhotos.add(photo1.id);
+
+				// Start a new group with photo1
+				const group: PhotoGroup = {
+					photoIds: [photo1.id],
+					similarities: [],
+					avgSimilarity: 0,
+					timeSpan: 0,
+					startTime: new Date(photo1.dateTaken),
+					endTime: new Date(photo1.dateTaken)
+				};
+
+				// Store embeddings of photos in this group for comparison
+				const groupEmbeddings: Array<{ id: string; embedding: number[] }> = [
+					{ id: photo1.id, embedding: embedding1 }
+				];
+
+				// Parse photo1 time for comparison
+				const photo1Time = new Date(photo1.dateTaken).getTime();
+
+				// Look ahead for similar photos within time window
+				// Search in remaining photos from current position onwards
+				for (let j = globalIdx + 1; j < sortedPhotos.length; j++) {
+					const photo2 = sortedPhotos[j];
+
+					// Skip if already assigned
+					if (assignedPhotos.has(photo2.id)) {
+						continue;
+					}
+
+					// Parse photo2 time
+					const photo2Time = new Date(photo2.dateTaken).getTime();
+
+					// Check time window - use the configured time window in seconds
+					const timeDiffSeconds = Math.abs(photo2Time - photo1Time) / 1000;
+
+					// Break early if we've gone past the time window (photos are sorted)
+					if (photo2Time > photo1Time && timeDiffSeconds > timeWindowSeconds) {
+						break;
+					}
+
+					// Skip if outside time window but continue checking (for photos before photo1)
+					if (timeDiffSeconds > timeWindowSeconds) {
+						continue;
+					}
+
+					const embedding2 = embeddingMap.get(photo2.id);
+					if (!embedding2) {
+						continue;
+					}
+
+					// Check similarity against ALL photos in the group, not just the first one
+					// A photo should be added if it's similar to ANY photo already in the group
+					let maxSimilarity = -1;
+					let isSimilarToGroup = false;
+
+					for (const groupPhoto of groupEmbeddings) {
+						const similarity = EmbeddingsProcessor.cosineSimilarity(
+							groupPhoto.embedding,
+							embedding2
+						);
+
+						maxSimilarity = Math.max(maxSimilarity, similarity);
+
+						// If similar enough to any photo in the group, add it
+						if (similarity >= similarityThreshold) {
+							isSimilarToGroup = true;
+							break; // No need to check other photos once we find a match
+						}
+					}
+
+					// If similar enough to the group, add to group and mark as processed
+					if (isSimilarToGroup) {
+						group.photoIds.push(photo2.id);
+						group.similarities.push(maxSimilarity);
+						group.endTime = new Date(photo2.dateTaken);
+						assignedPhotos.add(photo2.id);
+
+						// Add this photo's embedding to the group for future comparisons
+						groupEmbeddings.push({ id: photo2.id, embedding: embedding2 });
+					}
+				}
+
+				// Only create group if it has at least 2 photos
+				if (group.photoIds.length >= 2) {
+					// Calculate average similarity
+					group.avgSimilarity =
+						group.similarities.reduce((sum, s) => sum + s, 0) / group.similarities.length;
+
+					// Calculate time span
+					group.timeSpan = (group.endTime.getTime() - group.startTime.getTime()) / 1000 / 60; // in minutes
+
+					groups.push(group);
+				}
+			}
+
+			// Report progress after each batch
+			if (onProgress) {
+				onProgress({
+					photosProcessed: batchEnd,
+					totalPhotos: totalPhotos,
+					groupsFound: groups.length,
+					currentBatch: batchIdx + 1,
+					totalBatches: totalBatches
+				});
+			}
+
+			// Yield to the browser to prevent UI freezing
+			// Add a small delay after each batch to allow UI updates
+			if (batchIdx < totalBatches - 1) {
+				await new Promise((resolve) => setTimeout(resolve, 10));
+			}
+		}
+
+		console.log(`Created ${groups.length} groups from ${photos.length} photos`);
+		console.log(`Photos in groups: ${assignedPhotos.size}`);
+
+		return groups;
+	}
+
+	/**
+	 * Group similar photos based on embeddings and time taken (ORIGINAL UNBATCHED VERSION)
 	 * @param photos - Array of photo objects with embeddings
 	 * @param embeddingMap - Map of photoId -> embedding array
 	 * @param similarityThreshold - Minimum similarity score (0-1)

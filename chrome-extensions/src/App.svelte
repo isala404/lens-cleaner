@@ -677,10 +677,18 @@
 
 				<div class="mx-auto mb-8 grid max-w-lg grid-cols-2 gap-5">
 					<div class="shadow-brutalist-sm rounded-2xl border-4 border-black bg-pastel-pink-100 p-6">
-						<div class="mb-2 text-5xl font-black text-black">{$appStore.stats.totalPhotos}</div>
+						<div class="mb-2 text-5xl font-black text-black">
+							{#if currentStep === 'grouping' && $appStore.processingProgress.isProcessing}
+								{$appStore.processingProgress.current}
+							{:else}
+								{$appStore.stats.totalPhotos}
+							{/if}
+						</div>
 						<div class="text-sm font-bold tracking-wide text-brutalist-gray uppercase">
 							{#if currentStep === 'indexing'}
 								Photos Scanned
+							{:else if currentStep === 'grouping'}
+								Photos Processed
 							{:else}
 								Photos Indexed
 							{/if}
@@ -691,7 +699,12 @@
 					>
 						<div class="mb-2 text-5xl font-black text-black">
 							{#if $appStore.processingProgress.isProcessing}
-								{$appStore.processingProgress.current}
+								{#if currentStep === 'grouping'}
+									{@const match = $appStore.processingProgress.message.match(/Found (\d+) groups/)}
+									{match ? match[1] : '0'}
+								{:else}
+									{$appStore.processingProgress.current}
+								{/if}
 							{:else if currentStep === 'indexing'}
 								{$appStore.stats.photosWithEmbeddings}
 							{:else}
@@ -740,7 +753,7 @@
 				>
 					<span class="shrink-0 text-2xl">💡</span>
 					<span class="text-sm leading-relaxed font-semibold text-black"
-						>You can background this tab or close it. Processing continues and progress is saved.</span
+						>Keep this tab open for best performance. Processing continues and progress is saved.</span
 					>
 				</div>
 			</div>

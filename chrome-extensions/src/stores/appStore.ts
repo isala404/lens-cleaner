@@ -149,10 +149,9 @@ export async function initializeApp() {
 				console.log('Resuming interrupted embedding process...');
 			} else if (
 				savedProgress.type === 'grouping' &&
-				stats.photosWithEmbeddings > 0 &&
-				stats.totalGroups === 0
+				stats.photosWithEmbeddings > 0
 			) {
-				// Resume grouping
+				// Resume grouping (even if groups exist, we'll clear them before resuming)
 				appStore.update((s) => ({
 					...s,
 					processingProgress: savedProgress
@@ -341,24 +340,31 @@ export async function calculateEmbeddings() {
 // Group photos
 export async function groupPhotos() {
 	const state = get(appStore);
+	const savedProgress = getSavedProcessingState();
+	const isResuming = savedProgress?.type === 'grouping' && savedProgress.isProcessing;
+	const alreadyProcessed = savedProgress?.current || 0;
+	const originalTotal = savedProgress?.originalTotal;
 
 	appStore.update((s) => ({
 		...s,
 		processingProgress: {
 			isProcessing: true,
 			type: 'grouping',
-			current: 0,
-			total: 0,
-			message: 'Grouping similar photos...'
+			current: alreadyProcessed,
+			total: originalTotal || 0,
+			message: isResuming ? 'Resuming grouping...' : 'Preparing to group photos...'
 		}
 	}));
-	saveProcessingState({
-		isProcessing: true,
-		type: 'grouping',
-		current: 0,
-		total: 0,
-		message: 'Grouping similar photos...'
-	});
+	saveProcessingState(
+		{
+			isProcessing: true,
+			type: 'grouping',
+			current: alreadyProcessed,
+			total: originalTotal || 0,
+			message: isResuming ? 'Resuming grouping...' : 'Preparing to group photos...'
+		},
+		originalTotal
+	);
 
 	try {
 		// Initialize processor if needed
@@ -385,19 +391,94 @@ export async function groupPhotos() {
 			return 0;
 		}
 
+		// If resuming and groups exist, clear them first to avoid duplicates
+		// (This happens if grouping was interrupted after some groups were saved)
+		if (isResuming) {
+			const stats = await db.getStats();
+			if (stats.totalGroups > 0) {
+				console.log('Clearing existing groups before resuming...');
+				await db.clearGroups();
+				await refreshData();
+			}
+		}
+
+		// Use original total if resuming, otherwise use current count
+		const totalToShow = originalTotal || photosWithEmbeddings.length;
+		const currentProcessed = isResuming ? alreadyProcessed : 0;
+
+		// Update total count
+		appStore.update((s) => ({
+			...s,
+			processingProgress: {
+				...s.processingProgress,
+				total: totalToShow,
+				current: currentProcessed,
+				message: isResuming
+					? `Resuming: ${totalToShow - currentProcessed} photos remaining...`
+					: `Starting to group ${photosWithEmbeddings.length} photos...`
+			}
+		}));
+		saveProcessingState(
+			{
+				isProcessing: true,
+				type: 'grouping',
+				current: currentProcessed,
+				total: totalToShow,
+				message: isResuming
+					? `Resuming: ${totalToShow - currentProcessed} photos remaining...`
+					: `Starting to group ${photosWithEmbeddings.length} photos...`
+			},
+			totalToShow
+		);
+
 		// Get all embeddings
 		const embeddings = await db.getAllEmbeddings();
 		const embeddingMap = new Map(embeddings.map((e) => [e.photoId, e.embedding]));
 
-		// Group photos
-		const groups = await groupingProcessor.groupSimilarPhotos(
+		// Track groups found so far (for resuming)
+		let totalGroupsFound = 0;
+		const existingGroups = await db.getAllGroups();
+		totalGroupsFound = existingGroups.length;
+
+		// Group photos with progress callback
+		const groups = await groupingProcessor.groupSimilarPhotosBatched(
 			photosWithEmbeddings,
 			embeddingMap,
 			state.settings.similarityThreshold,
-			state.settings.timeWindowMinutes
+			state.settings.timeWindowMinutes,
+			async (progress) => {
+				// Save groups incrementally as they're found (for resumability)
+				// Note: The algorithm returns all groups at the end, but we save progress
+				// so if interrupted, we can restart cleanly
+				const message = `Processed ${progress.photosProcessed}/${progress.totalPhotos} photos • Found ${progress.groupsFound} groups`;
+
+				appStore.update((s) => ({
+					...s,
+					processingProgress: {
+						isProcessing: true,
+						type: 'grouping',
+						current: progress.photosProcessed,
+						total: progress.totalPhotos,
+						message: message
+					}
+				}));
+
+				saveProcessingState(
+					{
+						isProcessing: true,
+						type: 'grouping',
+						current: progress.photosProcessed,
+						total: progress.totalPhotos,
+						message: message
+					},
+					totalToShow
+				);
+			},
+			50 // batch size
 		);
 
-		// Store groups in database
+		// Store groups in database (all at once at the end)
+		// If resuming, we already cleared existing groups above
 		for (const group of groups) {
 			await db.createGroup(group.photoIds, group.avgSimilarity);
 		}
