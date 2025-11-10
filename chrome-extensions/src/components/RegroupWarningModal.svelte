@@ -21,12 +21,12 @@
 		aria-modal="true"
 	>
 		<div
-			class="shadow-brutalist-lg relative w-full max-w-md animate-slide-in rounded-2xl border-4 border-black bg-white p-8"
+			class="shadow-brutalist-lg animate-slide-in relative w-full max-w-md rounded-2xl border-4 border-black bg-white p-8"
 		>
 			<!-- Close Button -->
 			<button
 				onclick={onClose}
-				class="absolute right-4 top-4 text-3xl font-black text-gray-400 transition-colors hover:text-black"
+				class="absolute top-4 right-4 text-3xl font-black text-gray-400 transition-colors hover:text-black"
 				aria-label="Close"
 			>
 				×
@@ -41,11 +41,15 @@
 			<!-- Warning Message -->
 			<div class="mb-6 space-y-4">
 				<p class="text-lg font-semibold text-gray-800">
-					Going back to regrouping will <span class="font-black text-red-600">discard all AI suggestions</span>.
+					Going back to regrouping will <span class="font-black text-red-600"
+						>discard all AI suggestions</span
+					>.
 				</p>
 
 				<div class="rounded-lg border-2 border-red-500 bg-red-50 p-4">
-					<p class="mb-2 font-bold text-red-800">You will need to pay again if you want to use auto-select after regrouping.</p>
+					<p class="mb-2 font-bold text-red-800">
+						You will need to pay again if you want to use auto-select after regrouping.
+					</p>
 					<p class="text-sm text-red-700">All current AI recommendations will be lost.</p>
 				</div>
 
@@ -57,7 +61,7 @@
 					type="text"
 					bind:value={confirmText}
 					placeholder="I understand"
-					class="w-full rounded-lg border-4 border-black px-4 py-3 font-mono text-lg focus:outline-none focus:ring-4 focus:ring-red-300"
+					class="w-full rounded-lg border-4 border-black px-4 py-3 font-mono text-lg focus:ring-4 focus:ring-red-300 focus:outline-none"
 				/>
 			</div>
 
@@ -72,7 +76,7 @@
 				<button
 					onclick={onConfirm}
 					disabled={!isConfirmValid}
-					class="shadow-brutalist hover:shadow-brutalist-lg flex-1 rounded-xl border-4 border-black bg-red-500 py-3 font-black text-white transition-all hover:translate-x-[-2px] hover:translate-y-[-2px] disabled:opacity-50 disabled:cursor-not-allowed"
+					class="shadow-brutalist hover:shadow-brutalist-lg flex-1 rounded-xl border-4 border-black bg-red-500 py-3 font-black text-white transition-all hover:translate-x-[-2px] hover:translate-y-[-2px] disabled:cursor-not-allowed disabled:opacity-50"
 				>
 					Proceed
 				</button>

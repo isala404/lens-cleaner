@@ -61,7 +61,6 @@ class LensDB {
 
 			request.onupgradeneeded = (event) => {
 				const db = (event.target as IDBOpenDBRequest).result;
-				const oldVersion = event.oldVersion;
 
 				// Photos store
 				if (!db.objectStoreNames.contains('photos')) {
@@ -691,7 +690,16 @@ class LensDB {
 	/**
 	 * Get auto-select job by ID
 	 */
-	async getAutoSelectJob(jobId: string): Promise<any> {
+	async getAutoSelectJob(jobId: string): Promise<
+		| {
+				jobId: string;
+				status: string;
+				email: string;
+				photoCount: number;
+				createdAt: string;
+		  }
+		| undefined
+	> {
 		if (!this.db) throw new Error('Database not initialized');
 
 		const transaction = this.db.transaction(['autoSelectJobs'], 'readonly');

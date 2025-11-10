@@ -59,12 +59,12 @@
 		aria-modal="true"
 	>
 		<div
-			class="shadow-brutalist-lg relative w-full max-w-2xl animate-slide-in rounded-2xl border-4 border-black bg-white p-8"
+			class="shadow-brutalist-lg animate-slide-in relative w-full max-w-2xl rounded-2xl border-4 border-black bg-white p-8"
 		>
 			<!-- Close Button -->
 			<button
 				onclick={onClose}
-				class="absolute right-4 top-4 text-3xl font-black text-gray-400 transition-colors hover:text-black"
+				class="absolute top-4 right-4 text-3xl font-black text-gray-400 transition-colors hover:text-black"
 				aria-label="Close"
 			>
 				×
@@ -78,7 +78,9 @@
 			</div>
 
 			<!-- Value Proposition -->
-			<div class="mb-6 space-y-4 rounded-xl border-4 border-black bg-gradient-to-br from-purple-50 to-pink-50 p-6">
+			<div
+				class="mb-6 space-y-4 rounded-xl border-4 border-black bg-gradient-to-br from-purple-50 to-pink-50 p-6"
+			>
 				<h3 class="text-xl font-black text-black">What you get:</h3>
 				<ul class="space-y-3">
 					<li class="flex items-start gap-3">
@@ -129,7 +131,8 @@
 					</div>
 					<div class="flex items-center justify-between">
 						<span class="font-semibold text-gray-700">Price per photo:</span>
-						<span class="font-mono text-lg font-bold text-black">${PRICE_PER_PHOTO.toFixed(2)}</span>
+						<span class="font-mono text-lg font-bold text-black">${PRICE_PER_PHOTO.toFixed(2)}</span
+						>
 					</div>
 				</div>
 				<div class="border-t-4 border-black pt-4">
@@ -150,14 +153,16 @@
 					id="email"
 					bind:value={email}
 					placeholder="your@email.com"
-					class="w-full rounded-lg border-4 border-black px-4 py-3 font-mono text-lg focus:outline-none focus:ring-4 focus:ring-purple-300"
+					class="w-full rounded-lg border-4 border-black px-4 py-3 font-mono text-lg focus:ring-4 focus:ring-purple-300 focus:outline-none"
 					disabled={isSubmitting}
 				/>
 			</div>
 
 			<!-- Error Message -->
 			{#if error}
-				<div class="mb-4 rounded-lg border-2 border-red-500 bg-red-50 p-3 text-center text-sm font-semibold text-red-700">
+				<div
+					class="mb-4 rounded-lg border-2 border-red-500 bg-red-50 p-3 text-center text-sm font-semibold text-red-700"
+				>
 					{error}
 				</div>
 			{/if}
@@ -182,7 +187,10 @@
 
 			<!-- Support -->
 			<p class="mt-4 text-center text-xs text-gray-500">
-				Need help? Contact <a href="mailto:support@tallisa.dev" class="font-semibold text-purple-600 hover:underline">support@tallisa.dev</a>
+				Need help? Contact <a
+					href="mailto:support@tallisa.dev"
+					class="font-semibold text-purple-600 hover:underline">support@tallisa.dev</a
+				>
 			</p>
 		</div>
 	</div>

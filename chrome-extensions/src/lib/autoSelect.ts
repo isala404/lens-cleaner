@@ -3,7 +3,7 @@
  */
 
 import db, { type Photo } from './db';
-import { createCheckout, uploadPhotos, startProcessing, getJobStatus } from './api';
+import { getJobStatus } from './api';
 
 export interface AutoSelectState {
 	isActive: boolean;
@@ -26,7 +26,10 @@ function blobToFile(blob: Blob, filename: string): File {
 export async function uploadPhotosForAutoSelect(
 	photos: Photo[],
 	onProgress: (progress: number) => void
-): Promise<void> {
+): Promise<{
+	files: File[];
+	photoMetadata: Array<{ id: string; filename: string; group_id: string | null }>;
+}> {
 	const files: File[] = [];
 	const photoMetadata: Array<{ id: string; filename: string; group_id: string | null }> = [];
 
@@ -47,7 +50,7 @@ export async function uploadPhotosForAutoSelect(
 		onProgress(progress);
 	}
 
-	return { files, photoMetadata } as any;
+	return { files, photoMetadata };
 }
 
 /**
@@ -56,7 +59,13 @@ export async function uploadPhotosForAutoSelect(
 export async function pollJobStatus(
 	jobId: string,
 	onUpdate: (status: string) => void,
-	onComplete: (results: any) => void,
+	onComplete: (results: {
+		deletions: Array<{
+			photo_id: string;
+			reason: string;
+			confidence: 'high' | 'medium' | 'low';
+		}>;
+	}) => void,
 	onError: (error: string) => void
 ): Promise<void> {
 	const maxAttempts = 1000; // Max ~8 hours with 30s interval

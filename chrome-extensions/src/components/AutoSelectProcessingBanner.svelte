@@ -4,11 +4,13 @@
 	export let message: string = '';
 </script>
 
-<div class="mb-6 overflow-hidden rounded-2xl border-4 border-black shadow-brutalist-lg">
+<div class="shadow-brutalist-lg mb-6 overflow-hidden rounded-2xl border-4 border-black">
 	{#if status === 'uploading'}
 		<div class="bg-gradient-to-r from-blue-100 to-purple-100 p-6">
 			<div class="mb-3 flex items-center gap-3">
-				<div class="h-8 w-8 animate-spin rounded-full border-4 border-gray-300 border-t-black"></div>
+				<div
+					class="h-8 w-8 animate-spin rounded-full border-4 border-gray-300 border-t-black"
+				></div>
 				<h3 class="text-xl font-black text-black">Uploading Photos...</h3>
 			</div>
 			<div class="mb-2 h-4 w-full overflow-hidden rounded-full border-2 border-black bg-white">
@@ -24,7 +26,9 @@
 			<div class="mb-4 flex items-center gap-3">
 				<div class="relative h-12 w-12">
 					<div class="absolute inset-0 animate-ping rounded-full bg-purple-400 opacity-75"></div>
-					<div class="relative flex h-full w-full items-center justify-center rounded-full bg-purple-500 text-2xl">
+					<div
+						class="relative flex h-full w-full items-center justify-center rounded-full bg-purple-500 text-2xl"
+					>
 						🤖
 					</div>
 				</div>
@@ -54,7 +58,10 @@
 			</p>
 
 			<p class="mt-2 text-center text-xs text-gray-500">
-				Need help? Contact <a href="mailto:support@tallisa.dev" class="font-semibold text-purple-600 hover:underline">support@tallisa.dev</a>
+				Need help? Contact <a
+					href="mailto:support@tallisa.dev"
+					class="font-semibold text-purple-600 hover:underline">support@tallisa.dev</a
+				>
 			</p>
 		</div>
 	{:else if status === 'completed'}
@@ -85,7 +92,10 @@
 				</div>
 			</div>
 			<p class="mt-3 text-center text-xs text-gray-500">
-				Contact <a href="mailto:support@tallisa.dev" class="font-semibold text-red-600 hover:underline">support@tallisa.dev</a> for assistance
+				Contact <a
+					href="mailto:support@tallisa.dev"
+					class="font-semibold text-red-600 hover:underline">support@tallisa.dev</a
+				> for assistance
 			</p>
 		</div>
 	{/if}
@@ -93,7 +103,8 @@
 
 <style>
 	@keyframes ping {
-		75%, 100% {
+		75%,
+		100% {
 			transform: scale(2);
 			opacity: 0;
 		}

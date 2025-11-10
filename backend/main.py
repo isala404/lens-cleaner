@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Optional
 
 import aiosqlite
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Body
+from fastapi import Body, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, EmailStr
@@ -66,7 +66,8 @@ class JobStatusResponse(BaseModel):
 async def init_db():
     """Initialize SQLite database with jobs table"""
     async with aiosqlite.connect(DATABASE_PATH) as db:
-        await db.execute("""
+        await db.execute(
+            """
             CREATE TABLE IF NOT EXISTS jobs (
                 id TEXT PRIMARY KEY,
                 email TEXT NOT NULL,
@@ -79,7 +80,8 @@ async def init_db():
                 upload_dir TEXT,
                 results_json TEXT
             )
-        """)
+        """
+        )
         await db.commit()
 
 
@@ -164,7 +166,9 @@ async def mock_checkout_page(checkout_id: str):
     job_id, email, total_cost, photo_count = row
 
     # Get the extension URL from environment or use default
-    extension_url = os.getenv("EXTENSION_URL", "chrome-extension://your-extension-id/dashboard.html")
+    extension_url = os.getenv(
+        "EXTENSION_URL", "chrome-extension://your-extension-id/dashboard.html"
+    )
 
     html_content = f"""
     <!DOCTYPE html>
@@ -271,9 +275,7 @@ async def upload_photos(job_id: str, files: list[UploadFile] = File(...)):
     upload_dir, status = row
 
     if status not in ["created", "uploaded"]:
-        raise HTTPException(
-            status_code=400, detail="Job is already processing or completed"
-        )
+        raise HTTPException(status_code=400, detail="Job is already processing or completed")
 
     # Save uploaded files
     upload_path = Path(upload_dir)
@@ -314,15 +316,11 @@ async def start_processing(job_id: str, photo_metadata: list[dict] = Body(...)):
     upload_dir, status = row
 
     if status != "uploaded":
-        raise HTTPException(
-            status_code=400, detail="Job must be uploaded before processing"
-        )
+        raise HTTPException(status_code=400, detail="Job must be uploaded before processing")
 
     # Update status to processing
     async with aiosqlite.connect(DATABASE_PATH) as db:
-        await db.execute(
-            "UPDATE jobs SET status = ? WHERE id = ?", ("processing", job_id)
-        )
+        await db.execute("UPDATE jobs SET status = ? WHERE id = ?", ("processing", job_id))
         await db.commit()
 
     # Start background processing
@@ -397,9 +395,7 @@ async def process_job_with_gemini(job_id: str, upload_dir: str, photo_metadata: 
         else:
             # Use real Gemini processing
             processor = GeminiProcessor(api_key)
-            results = await processor.process_photos(
-                job_id, Path(upload_dir), photo_metadata
-            )
+            results = await processor.process_photos(job_id, Path(upload_dir), photo_metadata)
 
         # Update job as completed
         async with aiosqlite.connect(DATABASE_PATH) as db:

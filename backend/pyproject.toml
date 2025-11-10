@@ -4,6 +4,8 @@ target-version = ['py311']
 
 [tool.ruff]
 line-length = 100
+
+[tool.ruff.lint]
 select = [
     "E",  # pycodestyle errors
     "W",  # pycodestyle warnings
@@ -14,7 +16,8 @@ select = [
 ]
 ignore = [
     "E501",  # line too long (handled by black)
+    "B008",  # do not perform function calls in argument defaults (FastAPI pattern)
 ]
 
-[tool.ruff.isort]
+[tool.ruff.lint.isort]
 known-third-party = ["fastapi", "pydantic", "aiosqlite"]

@@ -8,7 +8,7 @@
 	export let onToggleSelection: ((photoId: string) => void) | undefined = undefined;
 
 	let hoveredPhotoId: string | null = null;
-
+</script>
 
 <div class="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-4">
 	{#each photos as photo (photo.id)}
@@ -52,7 +52,7 @@
 
 					<!-- AI Suggestion Badge -->
 					{#if photo.aiSuggestionReason}
-						<div class="absolute right-2 top-2">
+						<div class="absolute top-2 right-2">
 							<div
 								class="flex h-8 w-8 items-center justify-center rounded-full border-2 border-black bg-gradient-to-br from-purple-400 to-pink-400 text-sm font-black text-white shadow-lg"
 								title="AI Suggested"
@@ -66,7 +66,7 @@
 				<!-- AI Tooltip -->
 				{#if photo.aiSuggestionReason && hoveredPhotoId === photo.id}
 					<div
-						class="absolute left-1/2 bottom-full z-50 mb-2 w-64 -translate-x-1/2 rounded-lg border-4 border-black bg-white p-3 shadow-brutalist-lg"
+						class="shadow-brutalist-lg absolute bottom-full left-1/2 z-50 mb-2 w-64 -translate-x-1/2 rounded-lg border-4 border-black bg-white p-3"
 					>
 						<div class="mb-2 flex items-center gap-2">
 							<span class="text-lg">🤖</span>

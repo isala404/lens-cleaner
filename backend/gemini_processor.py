@@ -6,7 +6,6 @@ Handles batch processing of photos to identify duplicates and low-quality images
 import asyncio
 import base64
 import json
-import os
 from pathlib import Path
 from typing import Any
 
@@ -115,9 +114,7 @@ class GeminiProcessor:
         # Parse and return results
         return await self._parse_results(results)
 
-    async def _create_batch_jsonl(
-        self, upload_dir: Path, photo_metadata: list[dict]
-    ) -> Path:
+    async def _create_batch_jsonl(self, upload_dir: Path, photo_metadata: list[dict]) -> Path:
         """Create JSONL file with photo analysis requests"""
         jsonl_path = upload_dir / "batch_requests.jsonl"
 
@@ -138,7 +135,7 @@ class GeminiProcessor:
             # Prepare photo data
             content_parts = [{"text": SYSTEM_PROMPT}]
 
-            for i, photo in enumerate(group_photos):
+            for photo in group_photos:
                 # Read photo file
                 photo_path = upload_dir / photo["filename"]
                 if not photo_path.exists():
@@ -151,9 +148,7 @@ class GeminiProcessor:
                 photo_b64 = base64.b64encode(photo_bytes).decode("utf-8")
 
                 # Add to content
-                content_parts.append(
-                    {"text": f"Photo id: {photo['id']}, group_id: {group_id}"}
-                )
+                content_parts.append({"text": f"Photo id: {photo['id']}, group_id: {group_id}"})
                 content_parts.append(
                     {"inline_data": {"mime_type": "image/jpeg", "data": photo_b64}}
                 )
