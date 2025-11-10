@@ -19,6 +19,8 @@
 	} from './stores/appStore';
 
 	import db, { type Group, type Photo } from './lib/db';
+	import { uploadPhotos, startProcessing, getJobStatus } from './lib/api';
+	import { uploadPhotosForAutoSelect, pollJobStatus, applyAISuggestions } from './lib/autoSelect';
 
 	// Components
 	import Header from './components/Header.svelte';
@@ -29,6 +31,7 @@
 	import ProcessingScreen from './components/ProcessingScreen.svelte';
 	import ReviewScreen from './components/ReviewScreen.svelte';
 	import SettingsModal from './components/SettingsModal.svelte';
+	import RegroupWarningModal from './components/RegroupWarningModal.svelte';
 
 	let currentStep: 'welcome' | 'preview' | 'indexing' | 'indexed' | 'grouping' | 'reviewing' =
 		'welcome';
@@ -38,6 +41,14 @@
 	let processingStartTime = 0;
 	let processingStartProgress = 0; // Track progress at start for accurate time estimates
 	let estimatedTimeRemaining = 0;
+
+	// Auto-select state
+	let autoSelectStatus: 'idle' | 'payment' | 'uploading' | 'processing' | 'completed' | 'failed' =
+		'idle';
+	let autoSelectProgress = 0;
+	let autoSelectError = '';
+	let autoSelectJobId: string | null = null;
+	let showRegroupWarning = false;
 
 	// Settings - reactive to appStore
 	$: settings = {
@@ -129,6 +140,38 @@
 			}
 		} else {
 			determineCurrentStep();
+		}
+
+		// Check for payment redirect (job_id in URL)
+		const urlParams = new URLSearchParams(window.location.search);
+		const jobId = urlParams.get('job_id');
+		const paymentStatus = urlParams.get('payment');
+
+		if (jobId && paymentStatus === 'success') {
+			// Save job ID and start processing
+			autoSelectJobId = jobId;
+			localStorage.setItem('autoSelectJobId', jobId);
+			await db.saveAutoSelectJob({
+				jobId,
+				status: 'created',
+				email: '',
+				photoCount: $appStore.stats.totalPhotos,
+				createdAt: new Date().toISOString()
+			});
+
+			// Clear URL parameters
+			window.history.replaceState({}, document.title, window.location.pathname);
+
+			// Start upload process
+			await handleAutoSelectUpload();
+		} else {
+			// Check if there's a saved job in progress
+			const savedJobId = localStorage.getItem('autoSelectJobId');
+			if (savedJobId) {
+				autoSelectJobId = savedJobId;
+				// Check job status
+				await checkAutoSelectJobStatus(savedJobId);
+			}
 		}
 	});
 
@@ -239,23 +282,168 @@
 		}
 	}
 
+	// Auto-select handlers
+	function handleAutoSelect() {
+		// Just open modal, handled in ReviewScreen
+	}
+
+	async function handleCheckoutCreated(checkoutUrl: string, jobId: string) {
+		// Store job ID for when payment completes
+		autoSelectJobId = jobId;
+		localStorage.setItem('autoSelectJobId', jobId);
+		// Open checkout page
+		window.open(checkoutUrl, '_blank');
+	}
+
+	async function handleAutoSelectUpload() {
+		try {
+			autoSelectStatus = 'uploading';
+
+			// Get all photos with embeddings
+			const photos = await db.getAllPhotos();
+			const photosWithEmbeddings = photos.filter((p) => p.hasEmbedding);
+
+			if (photosWithEmbeddings.length === 0) {
+				throw new Error('No photos to upload');
+			}
+
+			// Convert and upload
+			const { files, photoMetadata } = await uploadPhotosForAutoSelect(
+				photosWithEmbeddings,
+				(progress) => {
+					autoSelectProgress = progress;
+				}
+			);
+
+			if (!autoSelectJobId) {
+				throw new Error('No job ID found');
+			}
+
+			// Upload files
+			await uploadPhotos(autoSelectJobId, files);
+			autoSelectProgress = 75;
+
+			// Start processing
+			await startProcessing(autoSelectJobId, photoMetadata);
+			autoSelectProgress = 100;
+
+			// Start polling
+			autoSelectStatus = 'processing';
+			await pollJobStatus(
+				autoSelectJobId,
+				(status) => {
+					console.log('Job status:', status);
+				},
+				async (results) => {
+					// Apply AI suggestions
+					await applyAISuggestions(results.deletions);
+
+					// Select photos with AI suggestions
+					const photosToSelect = results.deletions.map((d) => d.photo_id);
+					photosToSelect.forEach((id) => togglePhotoSelection(id));
+
+					autoSelectStatus = 'completed';
+					localStorage.removeItem('autoSelectJobId');
+					await refreshData();
+				},
+				(error) => {
+					autoSelectStatus = 'failed';
+					autoSelectError = error;
+				}
+			);
+		} catch (error) {
+			autoSelectStatus = 'failed';
+			autoSelectError = error instanceof Error ? error.message : 'Upload failed';
+		}
+	}
+
+	async function checkAutoSelectJobStatus(jobId: string) {
+		try {
+			const response = await getJobStatus(jobId);
+
+			if (response.status === 'processing') {
+				autoSelectStatus = 'processing';
+				// Start polling
+				await pollJobStatus(
+					jobId,
+					(status) => {
+						console.log('Job status:', status);
+					},
+					async (results) => {
+						await applyAISuggestions(results.deletions);
+
+						const photosToSelect = results.deletions.map((d) => d.photo_id);
+						photosToSelect.forEach((id) => togglePhotoSelection(id));
+
+						autoSelectStatus = 'completed';
+						localStorage.removeItem('autoSelectJobId');
+						await refreshData();
+					},
+					(error) => {
+						autoSelectStatus = 'failed';
+						autoSelectError = error;
+					}
+				);
+			} else if (response.status === 'completed' && response.results) {
+				await applyAISuggestions(response.results.deletions);
+
+				const photosToSelect = response.results.deletions.map((d) => d.photo_id);
+				photosToSelect.forEach((id) => togglePhotoSelection(id));
+
+				autoSelectStatus = 'completed';
+				localStorage.removeItem('autoSelectJobId');
+				await refreshData();
+			} else if (response.status === 'failed') {
+				autoSelectStatus = 'failed';
+				autoSelectError = 'Processing failed';
+			}
+		} catch (error) {
+			console.error('Error checking job status:', error);
+		}
+	}
+
 	async function handleRegroup() {
+		// Check if there are AI suggestions
+		const photos = await db.getAllPhotos();
+		const photosWithAI = photos.filter((p) => p.aiSuggestionReason);
+
+		if (photosWithAI.length > 0) {
+			// Show warning modal
+			showRegroupWarning = true;
+			return;
+		}
+
 		if (
 			confirm(
 				'This will clear all duplicate groups. You can adjust settings and regroup. Your indexed photos will be kept. Continue?'
 			)
 		) {
-			try {
-				// Only clear groups, keep embeddings
-				await db.clearGroups();
-				groupPhotosCache.clear();
-				ungroupedPhotos = [];
-				await refreshData();
-				currentStep = 'indexed';
-			} catch (error) {
-				alert('Error regrouping: ' + error);
-			}
+			await performRegroup();
 		}
+	}
+
+	async function performRegroup() {
+		try {
+			// Clear AI suggestions and auto-select state
+			await db.clearAISuggestions();
+			localStorage.removeItem('autoSelectJobId');
+			autoSelectJobId = null;
+			autoSelectStatus = 'idle';
+
+			// Only clear groups, keep embeddings
+			await db.clearGroups();
+			groupPhotosCache.clear();
+			ungroupedPhotos = [];
+			await refreshData();
+			currentStep = 'indexed';
+		} catch (error) {
+			alert('Error regrouping: ' + error);
+		}
+	}
+
+	async function handleRegroupConfirmed() {
+		showRegroupWarning = false;
+		await performRegroup();
 	}
 
 	async function handleRescan() {
@@ -450,6 +638,12 @@
 				onRescan={handleRescan}
 				{getCachedBlobUrl}
 				{getGroupPhotos}
+				{autoSelectStatus}
+				{autoSelectProgress}
+				{autoSelectError}
+				onAutoSelect={handleAutoSelect}
+				onCheckoutCreated={handleCheckoutCreated}
+				totalPhotosCount={$appStore.stats.photosWithEmbeddings}
 			/>
 		{/if}
 	</main>
@@ -466,6 +660,13 @@
 		similaritySliderPosition = value;
 		editingSettings.similarityThreshold = sliderPositionToThreshold(value);
 	}}
+/>
+
+<!-- Regroup Warning Modal -->
+<RegroupWarningModal
+	show={showRegroupWarning}
+	onClose={() => (showRegroupWarning = false)}
+	onConfirm={handleRegroupConfirmed}
 />
 
 <style>
