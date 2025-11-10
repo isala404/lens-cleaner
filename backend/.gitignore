@@ -4,8 +4,8 @@
 *.dll
 *.so
 *.dylib
-server
-lens-cleaner-backend
+/server
+/lens-cleaner-backend
 
 # Test binary
 *.test

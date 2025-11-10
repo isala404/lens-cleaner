@@ -45,8 +45,8 @@ type BatchRequest struct {
 
 // BatchRequestData contains the actual request data
 type BatchRequestData struct {
-	Contents         []Content          `json:"contents"`
-	GenerationConfig GenerationConfig   `json:"generation_config"`
+	Contents         []Content        `json:"contents"`
+	GenerationConfig GenerationConfig `json:"generation_config"`
 }
 
 // Content represents the content structure for Gemini
@@ -68,9 +68,9 @@ type InlineData struct {
 
 // GenerationConfig represents the generation configuration
 type GenerationConfig struct {
-	Temperature      float32            `json:"temperature"`
-	MaxOutputTokens  int                `json:"max_output_tokens"`
-	ResponseMimeType string             `json:"responseMimeType"`
+	Temperature      float32                `json:"temperature"`
+	MaxOutputTokens  int                    `json:"max_output_tokens"`
+	ResponseMimeType string                 `json:"responseMimeType"`
 	ResponseSchema   map[string]interface{} `json:"responseSchema"`
 }
 
@@ -133,9 +133,9 @@ Be conservative - it's better to keep a questionable photo than to lose an irrep
 				"items": map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
-						"index":      map[string]interface{}{"type": "integer"},
-						"id":         map[string]interface{}{"type": "string"},
-						"reason":     map[string]interface{}{"type": "string"},
+						"index":  map[string]interface{}{"type": "integer"},
+						"id":     map[string]interface{}{"type": "string"},
+						"reason": map[string]interface{}{"type": "string"},
 						"confidence": map[string]interface{}{
 							"type": "string",
 							"enum": []string{"high", "medium", "low"},

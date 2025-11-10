@@ -6,11 +6,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -202,10 +201,10 @@ func (a *API) UploadPhoto(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"photo_id":        photoID,
-		"status":          "uploaded",
-		"uploaded_count":  uploadedPhotos,
-		"total_count":     job.TotalPhotos,
+		"photo_id":       photoID,
+		"status":         "uploaded",
+		"uploaded_count": uploadedPhotos,
+		"total_count":    job.TotalPhotos,
 	})
 }
 
@@ -260,7 +259,11 @@ func (a *API) SubmitGrouping(c *gin.Context) {
 	}
 
 	// Calculate hash of grouping data for validation
-	groupingJSON, _ := json.Marshal(req.GroupingData)
+	groupingJSON, err := json.Marshal(req.GroupingData)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to marshal grouping data"})
+		return
+	}
 	hash := sha256.Sum256(groupingJSON)
 	groupingDataHash := hex.EncodeToString(hash[:])
 
@@ -269,7 +272,7 @@ func (a *API) SubmitGrouping(c *gin.Context) {
 		for _, photoID := range photoIDs {
 			if err := a.db.UpdatePhotoGroupID(req.JobID, photoID, groupID); err != nil {
 				// Log error but continue
-				fmt.Printf("Warning: failed to update group ID for photo %s: %v\n", photoID, err)
+				log.Printf("Warning: failed to update group ID for photo %s: %v", photoID, err)
 			}
 		}
 	}
@@ -382,11 +385,11 @@ func convertResultsSlice(results []*models.ProcessingResult) []models.Processing
 // CreatePayment creates a payment record (called after successful payment via Polar)
 func (a *API) CreatePayment(c *gin.Context) {
 	var req struct {
-		UserID         string  `json:"user_id" binding:"required"`
-		PhotoCount     int     `json:"photo_count" binding:"required,min=1"`
-		AmountPaid     float64 `json:"amount_paid" binding:"required,min=0"`
-		PaymentID      string  `json:"payment_id" binding:"required"`
-		PaymentProvider string `json:"payment_provider" binding:"required"`
+		UserID          string  `json:"user_id" binding:"required"`
+		PhotoCount      int     `json:"photo_count" binding:"required,min=1"`
+		AmountPaid      float64 `json:"amount_paid" binding:"required,min=0"`
+		PaymentID       string  `json:"payment_id" binding:"required"`
+		PaymentProvider string  `json:"payment_provider" binding:"required"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -488,7 +491,7 @@ Thank you,
 		"to":            "refunds@tallisa.dev",
 		"unused_photos": unusedPhotos,
 		"refund_amount": refundAmount,
-		"mailto_link":   fmt.Sprintf("mailto:refunds@tallisa.dev?subject=%s&body=%s",
+		"mailto_link": fmt.Sprintf("mailto:refunds@tallisa.dev?subject=%s&body=%s",
 			http.StatusText(http.StatusOK), // URL encode these in frontend
 			http.StatusText(http.StatusOK)),
 	})

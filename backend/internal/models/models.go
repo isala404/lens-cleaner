@@ -18,21 +18,21 @@ type Payment struct {
 
 // Job represents a processing job
 type Job struct {
-	ID                string     `json:"id" db:"id"`
-	PaymentID         string     `json:"payment_id" db:"payment_id"`
-	UserID            string     `json:"user_id" db:"user_id"`
-	Status            string     `json:"status" db:"status"` // created, uploading, uploaded, processing, completed, failed, cancelled
-	TotalPhotos       int        `json:"total_photos" db:"total_photos"`
-	UploadedPhotos    int        `json:"uploaded_photos" db:"uploaded_photos"`
-	ProcessedPhotos   int        `json:"processed_photos" db:"processed_photos"`
-	GeminiJobName     *string    `json:"gemini_job_name,omitempty" db:"gemini_job_name"`
-	GeminiInputFile   *string    `json:"gemini_input_file,omitempty" db:"gemini_input_file"`
-	GeminiOutputFile  *string    `json:"gemini_output_file,omitempty" db:"gemini_output_file"`
-	ErrorMessage      *string    `json:"error_message,omitempty" db:"error_message"`
-	CreatedAt         time.Time  `json:"created_at" db:"created_at"`
-	UpdatedAt         time.Time  `json:"updated_at" db:"updated_at"`
-	CompletedAt       *time.Time `json:"completed_at,omitempty" db:"completed_at"`
-	GroupingDataHash  string     `json:"grouping_data_hash" db:"grouping_data_hash"` // Hash of grouping JSON for validation
+	ID               string     `json:"id" db:"id"`
+	PaymentID        string     `json:"payment_id" db:"payment_id"`
+	UserID           string     `json:"user_id" db:"user_id"`
+	Status           string     `json:"status" db:"status"` // created, uploading, uploaded, processing, completed, failed, cancelled
+	TotalPhotos      int        `json:"total_photos" db:"total_photos"`
+	UploadedPhotos   int        `json:"uploaded_photos" db:"uploaded_photos"`
+	ProcessedPhotos  int        `json:"processed_photos" db:"processed_photos"`
+	GeminiJobName    *string    `json:"gemini_job_name,omitempty" db:"gemini_job_name"`
+	GeminiInputFile  *string    `json:"gemini_input_file,omitempty" db:"gemini_input_file"`
+	GeminiOutputFile *string    `json:"gemini_output_file,omitempty" db:"gemini_output_file"`
+	ErrorMessage     *string    `json:"error_message,omitempty" db:"error_message"`
+	CreatedAt        time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at" db:"updated_at"`
+	CompletedAt      *time.Time `json:"completed_at,omitempty" db:"completed_at"`
+	GroupingDataHash string     `json:"grouping_data_hash" db:"grouping_data_hash"` // Hash of grouping JSON for validation
 }
 
 // UploadedPhoto represents a photo that has been uploaded
@@ -48,14 +48,14 @@ type UploadedPhoto struct {
 
 // ProcessingResult represents the AI analysis result for a photo
 type ProcessingResult struct {
-	ID         string  `json:"id" db:"id"`
-	JobID      string  `json:"job_id" db:"job_id"`
-	PhotoID    string  `json:"photo_id" db:"photo_id"`
-	GroupID    string  `json:"group_id" db:"group_id"`
-	ShouldDelete bool  `json:"should_delete" db:"should_delete"`
-	Reason     *string `json:"reason,omitempty" db:"reason"`
-	Confidence string  `json:"confidence" db:"confidence"` // high, medium, low
-	CreatedAt  time.Time `json:"created_at" db:"created_at"`
+	ID           string    `json:"id" db:"id"`
+	JobID        string    `json:"job_id" db:"job_id"`
+	PhotoID      string    `json:"photo_id" db:"photo_id"`
+	GroupID      string    `json:"group_id" db:"group_id"`
+	ShouldDelete bool      `json:"should_delete" db:"should_delete"`
+	Reason       *string   `json:"reason,omitempty" db:"reason"`
+	Confidence   string    `json:"confidence" db:"confidence"` // high, medium, low
+	CreatedAt    time.Time `json:"created_at" db:"created_at"`
 }
 
 // Request/Response Models
@@ -67,9 +67,9 @@ type CostCalculationRequest struct {
 
 // CostCalculationResponse represents the cost calculation response
 type CostCalculationResponse struct {
-	PhotoCount int     `json:"photo_count"`
-	TotalCost  float64 `json:"total_cost"`
-	Currency   string  `json:"currency"`
+	PhotoCount    int     `json:"photo_count"`
+	TotalCost     float64 `json:"total_cost"`
+	Currency      string  `json:"currency"`
 	PricePerPhoto float64 `json:"price_per_photo"`
 }
 
