@@ -392,161 +392,282 @@
 	$: displayGroups = $filteredGroups.filter((g) => g.photoIds.length >= settings.minGroupSize);
 </script>
 
-<div class="app-container">
+<div class="mx-auto max-w-7xl px-5 py-8">
 	<!-- Header -->
-	<header class="header">
-		<div class="header-content">
-			<h1 class="logo">📸 Lens Cleaner</h1>
-			<p class="subtitle">Find and delete duplicate photos</p>
+	<header class="mb-12 flex items-center justify-center">
+		<div class="flex-1 text-center">
+			<h1 class="mb-3 text-6xl font-black tracking-tight text-black">📸 Lens Cleaner</h1>
+			<p class="text-xl font-semibold text-brutalist-gray">Find and delete duplicate photos</p>
 		</div>
 	</header>
 
 	<!-- Progress Steps -->
-	<div class="steps">
+	<div class="mb-14 flex items-center justify-center px-5">
+		<div class="flex flex-col items-center gap-2">
+			<div
+				class="flex h-16 w-16 items-center justify-center rounded-full border-4 border-black text-2xl font-black transition-all duration-300"
+				class:bg-pastel-pink-200={currentStep === 'welcome' || currentStep === 'preview'}
+				class:shadow-brutalist-sm={currentStep === 'welcome' || currentStep === 'preview'}
+				class:bg-emerald-400={currentStep === 'indexing' ||
+					currentStep === 'indexed' ||
+					currentStep === 'grouping' ||
+					currentStep === 'reviewing'}
+				class:text-white={currentStep === 'indexing' ||
+					currentStep === 'indexed' ||
+					currentStep === 'grouping' ||
+					currentStep === 'reviewing'}
+				class:bg-gray-200={currentStep !== 'welcome' &&
+					currentStep !== 'preview' &&
+					currentStep !== 'indexing' &&
+					currentStep !== 'indexed' &&
+					currentStep !== 'grouping' &&
+					currentStep !== 'reviewing'}
+			>
+				1
+			</div>
+			<div
+				class="text-sm font-bold"
+				class:text-black={currentStep === 'welcome' || currentStep === 'preview'}
+				class:text-gray-500={currentStep !== 'welcome' && currentStep !== 'preview'}
+			>
+				Scan Photos
+			</div>
+		</div>
 		<div
-			class="step"
-			class:active={currentStep === 'welcome' || currentStep === 'preview'}
-			class:done={currentStep === 'indexing' ||
+			class="mx-1 h-1 w-20 transition-all duration-300"
+			class:bg-emerald-400={currentStep === 'indexing' ||
 				currentStep === 'indexed' ||
 				currentStep === 'grouping' ||
 				currentStep === 'reviewing'}
-		>
-			<div class="step-number">1</div>
-			<div class="step-label">Scan Photos</div>
-		</div>
-		<div
-			class="step-line"
-			class:done={currentStep === 'indexing' ||
-				currentStep === 'indexed' ||
-				currentStep === 'grouping' ||
-				currentStep === 'reviewing'}
+			class:bg-gray-300={currentStep === 'welcome' || currentStep === 'preview'}
 		></div>
-		<div
-			class="step"
-			class:active={currentStep === 'indexing'}
-			class:done={currentStep === 'indexed' ||
-				currentStep === 'grouping' ||
-				currentStep === 'reviewing'}
-		>
-			<div class="step-number">2</div>
-			<div class="step-label">Index Photos</div>
+		<div class="flex flex-col items-center gap-2">
+			<div
+				class="flex h-16 w-16 items-center justify-center rounded-full border-4 border-black text-2xl font-black transition-all duration-300"
+				class:bg-pastel-purple-200={currentStep === 'indexing'}
+				class:shadow-brutalist-sm={currentStep === 'indexing'}
+				class:bg-emerald-400={currentStep === 'indexed' ||
+					currentStep === 'grouping' ||
+					currentStep === 'reviewing'}
+				class:text-white={currentStep === 'indexed' ||
+					currentStep === 'grouping' ||
+					currentStep === 'reviewing'}
+				class:bg-gray-200={currentStep !== 'indexing' &&
+					currentStep !== 'indexed' &&
+					currentStep !== 'grouping' &&
+					currentStep !== 'reviewing'}
+			>
+				2
+			</div>
+			<div
+				class="text-sm font-bold"
+				class:text-black={currentStep === 'indexing'}
+				class:text-gray-500={currentStep !== 'indexing'}
+			>
+				Index Photos
+			</div>
 		</div>
 		<div
-			class="step-line"
-			class:done={currentStep === 'indexed' ||
+			class="mx-1 h-1 w-20 transition-all duration-300"
+			class:bg-emerald-400={currentStep === 'indexed' ||
 				currentStep === 'grouping' ||
 				currentStep === 'reviewing'}
+			class:bg-gray-300={currentStep === 'welcome' ||
+				currentStep === 'preview' ||
+				currentStep === 'indexing'}
 		></div>
-		<div
-			class="step"
-			class:active={currentStep === 'indexed' || currentStep === 'grouping'}
-			class:done={currentStep === 'reviewing'}
-		>
-			<div class="step-number">3</div>
-			<div class="step-label">Find Duplicates</div>
+		<div class="flex flex-col items-center gap-2">
+			<div
+				class="flex h-16 w-16 items-center justify-center rounded-full border-4 border-black text-2xl font-black transition-all duration-300"
+				class:bg-pastel-blue-200={currentStep === 'indexed' || currentStep === 'grouping'}
+				class:shadow-brutalist-sm={currentStep === 'indexed' || currentStep === 'grouping'}
+				class:bg-emerald-400={currentStep === 'reviewing'}
+				class:text-white={currentStep === 'reviewing'}
+				class:bg-gray-200={currentStep !== 'indexed' &&
+					currentStep !== 'grouping' &&
+					currentStep !== 'reviewing'}
+			>
+				3
+			</div>
+			<div
+				class="text-sm font-bold"
+				class:text-black={currentStep === 'indexed' || currentStep === 'grouping'}
+				class:text-gray-500={currentStep !== 'indexed' && currentStep !== 'grouping'}
+			>
+				Find Duplicates
+			</div>
 		</div>
-		<div class="step-line" class:done={currentStep === 'reviewing'}></div>
-		<div class="step" class:active={currentStep === 'reviewing'}>
-			<div class="step-number">4</div>
-			<div class="step-label">Review & Delete</div>
+		<div
+			class="mx-1 h-1 w-20 transition-all duration-300"
+			class:bg-emerald-400={currentStep === 'reviewing'}
+			class:bg-gray-300={currentStep !== 'reviewing'}
+		></div>
+		<div class="flex flex-col items-center gap-2">
+			<div
+				class="flex h-16 w-16 items-center justify-center rounded-full border-4 border-black text-2xl font-black transition-all duration-300"
+				class:bg-pastel-pink-300={currentStep === 'reviewing'}
+				class:shadow-brutalist-sm={currentStep === 'reviewing'}
+				class:bg-gray-200={currentStep !== 'reviewing'}
+			>
+				4
+			</div>
+			<div
+				class="text-sm font-bold"
+				class:text-black={currentStep === 'reviewing'}
+				class:text-gray-500={currentStep !== 'reviewing'}
+			>
+				Review & Delete
+			</div>
 		</div>
 	</div>
 
 	<!-- Main Content -->
-	<main class="main-content">
+	<main class="cozy-card shadow-brutalist-lg min-h-[400px] p-12">
 		{#if currentStep === 'welcome'}
 			<!-- Welcome Screen -->
-			<div class="welcome-screen">
-				<div class="welcome-icon">📷</div>
-				<h2>Welcome to Lens Cleaner!</h2>
-				<p class="welcome-text">
+			<div class="mx-auto max-w-2xl px-5 py-10 text-center">
+				<div class="mb-6 animate-[gentle-bounce_4s_ease-in-out_infinite] text-8xl">📷</div>
+				<h2 class="mb-4 text-5xl font-black tracking-tight text-black">Welcome to Lens Cleaner!</h2>
+				<p class="mb-12 text-xl leading-relaxed font-medium text-brutalist-gray">
 					Let's find and remove duplicate photos from your Google Photos library.
 				</p>
-				<div class="instructions">
-					<div class="instruction-step">
-						<div class="instruction-number">1</div>
-						<div class="instruction-text">
-							<strong>Click the extension icon</strong> while on Google Photos
+				<div class="flex flex-col gap-6 text-left">
+					<div
+						class="shadow-brutalist-sm flex items-start gap-4 rounded-2xl border-4 border-black bg-pastel-pink-100 p-5"
+					>
+						<div
+							class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-black font-black text-white"
+						>
+							1
+						</div>
+						<div class="text-base leading-relaxed text-brutalist-gray">
+							<strong class="text-black">Click the extension icon</strong> while on Google Photos
 						</div>
 					</div>
-					<div class="instruction-step">
-						<div class="instruction-number">2</div>
-						<div class="instruction-text">
-							<strong>Click "Find Duplicates"</strong> to scan your photos
+					<div
+						class="shadow-brutalist-sm flex items-start gap-4 rounded-2xl border-4 border-black bg-pastel-purple-100 p-5"
+					>
+						<div
+							class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-black font-black text-white"
+						>
+							2
+						</div>
+						<div class="text-base leading-relaxed text-brutalist-gray">
+							<strong class="text-black">Click "Find Duplicates"</strong> to scan your photos
 						</div>
 					</div>
-					<div class="instruction-step">
-						<div class="instruction-number">3</div>
-						<div class="instruction-text">
-							<strong>Come back here</strong> to see and delete duplicates
+					<div
+						class="shadow-brutalist-sm flex items-start gap-4 rounded-2xl border-4 border-black bg-pastel-blue-100 p-5"
+					>
+						<div
+							class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-black font-black text-white"
+						>
+							3
+						</div>
+						<div class="text-base leading-relaxed text-brutalist-gray">
+							<strong class="text-black">Come back here</strong> to see and delete duplicates
 						</div>
 					</div>
 				</div>
 			</div>
 		{:else if currentStep === 'preview'}
 			<!-- Preview Screen -->
-			<div class="preview-screen">
-				<div class="preview-header">
+			<div class="p-5">
+				<div class="mb-8 flex items-start justify-between border-b-4 border-black pb-6">
 					<div>
-						<h2>📷 {$appStore.stats.totalPhotos} Photos Scanned</h2>
-						<p class="preview-subtitle">Review your scanned photos before indexing</p>
+						<h2 class="mb-2 text-4xl font-black text-black">
+							📷 {$appStore.stats.totalPhotos} Photos Scanned
+						</h2>
+						<p class="text-lg font-semibold text-brutalist-gray">
+							Review your scanned photos before indexing
+						</p>
 					</div>
-					<div class="preview-actions">
-						<button onclick={handleStartIndexing} class="btn btn-primary">
+					<div class="flex gap-3">
+						<button
+							onclick={handleStartIndexing}
+							class="shadow-brutalist hover:shadow-brutalist-lg rounded-xl border-4 border-black bg-linear-to-br from-pastel-pink-200 to-pastel-pink-300 px-6 py-3 text-lg font-black text-black transition-all hover:translate-x-[-2px] hover:translate-y-[-2px]"
+						>
 							🧠 Start Indexing
 						</button>
 					</div>
 				</div>
 
-				<div class="photo-grid">
+				<div class="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-4">
 					{#each sortedPhotos as photo (photo.id)}
-						<div class="photo-preview">
-							<img src="data:image/jpeg;base64,{photo.base64}" alt="Scanned" loading="lazy" />
+						<div class="aspect-square overflow-hidden rounded-xl border-2 border-black bg-gray-100">
+							<img
+								src="data:image/jpeg;base64,{photo.base64}"
+								alt="Scanned"
+								loading="lazy"
+								class="h-full w-full object-cover"
+							/>
 						</div>
 					{/each}
 				</div>
 			</div>
 		{:else if currentStep === 'indexed'}
 			<!-- Indexed Screen - Show indexed photos with grouping options -->
-			<div class="indexed-screen">
-				<div class="indexed-header">
-					<div class="indexed-title-section">
-						<button onclick={handleReindex} class="btn-back"> ← Reindex </button>
+			<div class="p-5">
+				<div class="mb-8 flex items-start justify-between border-b-4 border-black pb-6">
+					<div class="flex flex-col gap-3">
+						<button
+							onclick={handleReindex}
+							class="self-start rounded-lg border-2 border-black bg-gray-200 px-4 py-2 text-sm font-bold text-brutalist-gray transition-all hover:bg-gray-300"
+						>
+							← Reindex
+						</button>
 						<div>
-							<h2>✅ {$appStore.stats.photosWithEmbeddings} Photos Indexed</h2>
-							<p class="indexed-subtitle">
+							<h2 class="mb-2 text-4xl font-black text-black">
+								✅ {$appStore.stats.photosWithEmbeddings} Photos Indexed
+							</h2>
+							<p class="text-lg font-semibold text-brutalist-gray">
 								Ready to find duplicates. Adjust settings if needed before grouping.
 							</p>
 						</div>
 					</div>
-					<div class="indexed-actions">
-						<button onclick={handleStartGrouping} class="btn btn-primary">
+					<div class="flex gap-3">
+						<button
+							onclick={handleStartGrouping}
+							class="shadow-brutalist hover:shadow-brutalist-lg rounded-xl border-4 border-black bg-linear-to-br from-pastel-blue-200 to-pastel-blue-300 px-6 py-3 text-lg font-black text-black transition-all hover:translate-x-[-2px] hover:translate-y-[-2px]"
+						>
 							🔍 Start Grouping
 						</button>
-						<button onclick={handleOpenSettings} class="settings-btn"> ⚙️ </button>
+						<button
+							onclick={handleOpenSettings}
+							class="flex items-center justify-center rounded-xl border-4 border-black bg-pastel-purple-100 px-4 py-3 text-2xl transition-all hover:bg-pastel-purple-200"
+						>
+							⚙️
+						</button>
 					</div>
 				</div>
 
-				<div class="photo-grid">
+				<div class="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-4">
 					{#each sortedPhotos as photo (photo.id)}
-						<div class="photo-preview">
-							<img src="data:image/jpeg;base64,{photo.base64}" alt="Indexed" loading="lazy" />
+						<div class="aspect-square overflow-hidden rounded-xl border-2 border-black bg-gray-100">
+							<img
+								src="data:image/jpeg;base64,{photo.base64}"
+								alt="Indexed"
+								loading="lazy"
+								class="h-full w-full object-cover"
+							/>
 						</div>
 					{/each}
 				</div>
 			</div>
 		{:else if currentStep === 'indexing' || currentStep === 'grouping'}
 			<!-- Processing Screen -->
-			<div class="processing-screen">
-				<div class="spinner"></div>
-				<h2>
+			<div class="px-2.5 py-5 text-center">
+				<div
+					class="mx-auto mb-8 h-16 w-16 animate-spin rounded-full border-4 border-gray-300 border-t-black"
+				></div>
+				<h2 class="mb-3 text-4xl font-black text-black">
 					{#if currentStep === 'indexing'}
 						🧠 Indexing your photos...
 					{:else}
 						🔍 Finding duplicates...
 					{/if}
 				</h2>
-				<p class="processing-text">
+				<p class="mb-10 text-lg font-medium text-brutalist-gray">
 					{#if $appStore.processingProgress.message}
 						{$appStore.processingProgress.message}
 					{:else}
@@ -554,10 +675,10 @@
 					{/if}
 				</p>
 
-				<div class="stats-grid">
-					<div class="stat-box">
-						<div class="stat-number">{$appStore.stats.totalPhotos}</div>
-						<div class="stat-label">
+				<div class="mx-auto mb-8 grid max-w-lg grid-cols-2 gap-5">
+					<div class="shadow-brutalist-sm rounded-2xl border-4 border-black bg-pastel-pink-100 p-6">
+						<div class="mb-2 text-5xl font-black text-black">{$appStore.stats.totalPhotos}</div>
+						<div class="text-sm font-bold tracking-wide text-brutalist-gray uppercase">
 							{#if currentStep === 'indexing'}
 								Photos Scanned
 							{:else}
@@ -565,8 +686,10 @@
 							{/if}
 						</div>
 					</div>
-					<div class="stat-box">
-						<div class="stat-number">
+					<div
+						class="shadow-brutalist-sm rounded-2xl border-4 border-black bg-pastel-purple-100 p-6"
+					>
+						<div class="mb-2 text-5xl font-black text-black">
 							{#if $appStore.processingProgress.isProcessing}
 								{$appStore.processingProgress.current}
 							{:else if currentStep === 'indexing'}
@@ -575,7 +698,7 @@
 								{$appStore.stats.totalGroups}
 							{/if}
 						</div>
-						<div class="stat-label">
+						<div class="text-sm font-bold tracking-wide text-brutalist-gray uppercase">
 							{#if currentStep === 'indexing'}
 								Photos Analyzed
 							{:else}
@@ -586,25 +709,25 @@
 				</div>
 
 				{#if $appStore.processingProgress.isProcessing && $appStore.processingProgress.total > 0}
-					<div class="progress-container">
-						<div class="progress-bar-wrapper">
-							<span class="progress-percentage">
+					<div class="mx-auto mt-8 max-w-2xl">
+						<div class="mb-3 flex items-center gap-3">
+							<span class="min-w-[60px] text-2xl font-black text-black">
 								{Math.floor(
 									($appStore.processingProgress.current / $appStore.processingProgress.total) * 100
 								)}%
 							</span>
-							<div class="progress-bar">
+							<div class="h-4 flex-1 overflow-hidden rounded-md border-2 border-black bg-gray-200">
 								<div
-									class="progress-fill"
+									class="h-full bg-linear-to-r from-pastel-pink-300 to-pastel-purple-300 transition-all duration-300"
 									style="width: {($appStore.processingProgress.current /
 										$appStore.processingProgress.total) *
 										100}%"
 								></div>
 							</div>
 						</div>
-						<div class="progress-info">
+						<div class="flex items-center justify-end">
 							{#if estimatedTimeRemaining > 0}
-								<span class="time-estimate">
+								<span class="text-sm font-bold text-black">
 									~{formatTimeEstimate(estimatedTimeRemaining)} remaining
 								</span>
 							{/if}
@@ -612,9 +735,11 @@
 					</div>
 				{/if}
 
-				<div class="processing-note">
-					<span class="note-icon">💡</span>
-					<span class="note-text"
+				<div
+					class="shadow-brutalist-sm mt-12 inline-flex max-w-3xl items-center gap-2.5 rounded-2xl border-4 border-black bg-pastel-blue-100 px-6 py-4"
+				>
+					<span class="shrink-0 text-2xl">💡</span>
+					<span class="text-sm leading-relaxed font-semibold text-black"
 						>You can background this tab or close it. Processing continues and progress is saved.</span
 					>
 				</div>
@@ -622,35 +747,63 @@
 		{:else if currentStep === 'reviewing'}
 			<!-- Review Screen -->
 			{#if displayGroups.length === 0 && ungroupedPhotos.length === 0}
-				<div class="no-duplicates">
-					<div class="no-duplicates-icon">✨</div>
-					<h2>No duplicates found!</h2>
-					<p>Your photos are already clean.</p>
-					<div class="action-buttons">
-						<button onclick={handleRegroup} class="btn btn-secondary"> 🔄 Regroup </button>
-						<button onclick={handleReindex} class="btn btn-secondary"> 🔄 Reindex </button>
-						<button onclick={handleRescan} class="btn btn-danger-outline">
+				<div class="px-5 py-20 text-center">
+					<div class="mb-6 text-8xl">✨</div>
+					<h2 class="mb-3 text-5xl font-black text-black">No duplicates found!</h2>
+					<p class="mb-8 text-xl font-medium text-brutalist-gray">Your photos are already clean.</p>
+					<div class="flex flex-wrap justify-center gap-3">
+						<button
+							onclick={handleRegroup}
+							class="shadow-brutalist hover:shadow-brutalist-lg rounded-xl border-4 border-black bg-pastel-purple-200 px-6 py-3 font-bold text-black transition-all hover:translate-x-[-2px] hover:translate-y-[-2px]"
+						>
+							🔄 Regroup
+						</button>
+						<button
+							onclick={handleReindex}
+							class="shadow-brutalist hover:shadow-brutalist-lg rounded-xl border-4 border-black bg-pastel-blue-200 px-6 py-3 font-bold text-black transition-all hover:translate-x-[-2px] hover:translate-y-[-2px]"
+						>
+							🔄 Reindex
+						</button>
+						<button
+							onclick={handleRescan}
+							class="shadow-brutalist hover:shadow-brutalist-lg rounded-xl border-4 border-black bg-pastel-pink-200 px-6 py-3 font-bold text-black transition-all hover:translate-x-[-2px] hover:translate-y-[-2px]"
+						>
 							⚠️ Rescan from Scratch
 						</button>
 					</div>
 				</div>
 			{:else}
-				<div class="review-screen">
+				<div>
 					{#if displayGroups.length > 0}
-						<div class="review-header">
-							<div class="review-title-section">
-								<button onclick={handleRegroup} class="btn-back"> ← Regroup </button>
+						<div class="mb-8 flex items-start justify-between border-b-4 border-black pb-6">
+							<div class="flex flex-col gap-3">
+								<button
+									onclick={handleRegroup}
+									class="self-start rounded-lg border-2 border-black bg-gray-200 px-4 py-2 text-sm font-bold text-brutalist-gray transition-all hover:bg-gray-300"
+								>
+									← Regroup
+								</button>
 								<div>
-									<h2>Found {displayGroups.length} duplicate groups</h2>
-									<p class="review-subtitle">Click photos to mark for deletion</p>
+									<h2 class="mb-2 text-4xl font-black text-black">
+										Found {displayGroups.length} duplicate groups
+									</h2>
+									<p class="text-lg font-semibold text-brutalist-gray">
+										Click photos to mark for deletion
+									</p>
 								</div>
 							</div>
-							<div class="review-actions">
+							<div class="flex gap-3">
 								{#if $appStore.selectedPhotos.size > 0}
-									<button onclick={handleClearSelection} class="btn btn-secondary">
+									<button
+										onclick={handleClearSelection}
+										class="shadow-brutalist hover:shadow-brutalist-lg rounded-xl border-4 border-black bg-pastel-purple-200 px-6 py-3 font-bold whitespace-nowrap text-black transition-all hover:translate-x-[-2px] hover:translate-y-[-2px]"
+									>
 										Clear ({$appStore.selectedPhotos.size})
 									</button>
-									<button onclick={handleDeleteFromGooglePhotos} class="btn btn-primary">
+									<button
+										onclick={handleDeleteFromGooglePhotos}
+										class="shadow-brutalist hover:shadow-brutalist-lg rounded-xl border-4 border-black bg-linear-to-br from-pastel-pink-200 to-pastel-pink-300 px-6 py-3 text-lg font-black whitespace-nowrap text-black transition-all hover:translate-x-[-2px] hover:translate-y-[-2px]"
+									>
 										📸 Delete from Google Photos
 									</button>
 								{/if}
@@ -658,25 +811,40 @@
 						</div>
 
 						<!-- Duplicate Groups -->
-						<div class="groups-container">
+						<div class="mb-12 flex flex-col gap-8">
 							{#each displayGroups as group (group.id)}
 								{#await getGroupPhotos(group)}
-									<div class="group-card loading">
-										<div class="loading-spinner"></div>
+									<div
+										class="shadow-brutalist flex min-h-[200px] items-center justify-center rounded-2xl border-4 border-black bg-pastel-pink-50 p-6"
+									>
+										<div
+											class="h-10 w-10 animate-spin rounded-full border-4 border-gray-300 border-t-black"
+										></div>
 									</div>
 								{:then photos}
-									<div class="group-card">
-										<div class="group-header">
-											<h3>Duplicate Group ({photos.length} photos)</h3>
-											<button onclick={() => selectAllInGroup(group.id)} class="btn-link">
+									<div
+										class="organic-texture cozy-card shadow-brutalist hover:shadow-brutalist-lg p-6 transition-all hover:border-black"
+									>
+										<div class="mb-5 flex items-center justify-between">
+											<h3 class="text-2xl font-black text-black">
+												Duplicate Group ({photos.length} photos)
+											</h3>
+											<button
+												onclick={() => selectAllInGroup(group.id)}
+												class="cursor-pointer border-none bg-none px-2 py-1 text-sm font-bold text-black hover:underline"
+											>
 												Select All
 											</button>
 										</div>
-										<div class="group-photos">
+										<div class="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
 											{#each photos as photo (photo.id)}
 												<button
-													class="photo-card"
-													class:selected={$appStore.selectedPhotos.has(photo.id)}
+													class="relative aspect-square cursor-pointer overflow-hidden rounded-xl border-4 bg-none p-0 transition-all"
+													class:border-red-500={$appStore.selectedPhotos.has(photo.id)}
+													class:border-transparent={!$appStore.selectedPhotos.has(photo.id)}
+													class:shadow-brutalist-sm={!$appStore.selectedPhotos.has(photo.id)}
+													class:hover:scale-105={true}
+													class:hover:shadow-brutalist={true}
 													onclick={() => togglePhotoSelection(photo.id)}
 													type="button"
 												>
@@ -684,12 +852,23 @@
 														src="data:image/jpeg;base64,{photo.base64}"
 														alt="Duplicate"
 														loading="lazy"
+														class="h-full w-full object-cover"
 													/>
-													<div class="photo-overlay">
+													<div
+														class="absolute right-0 bottom-0 left-0 flex justify-center bg-linear-to-t from-black/70 to-transparent p-3"
+													>
 														{#if $appStore.selectedPhotos.has(photo.id)}
-															<div class="photo-badge selected">✓ Will Delete</div>
+															<div
+																class="rounded-full bg-red-500 px-3 py-1.5 text-xs font-black text-white"
+															>
+																✓ Will Delete
+															</div>
 														{:else}
-															<div class="photo-badge">Click to Select</div>
+															<div
+																class="rounded-full bg-white/90 px-3 py-1.5 text-xs font-bold text-black"
+															>
+																Click to Select
+															</div>
 														{/if}
 													</div>
 												</button>
@@ -703,15 +882,26 @@
 
 					<!-- Ungrouped Photos -->
 					{#if ungroupedPhotos.length > 0}
-						<div class="ungrouped-section">
-							<div class="section-header">
-								<h2>📷 {ungroupedPhotos.length} Unique Photos</h2>
-								<p class="section-subtitle">These photos have no duplicates</p>
+						<div class="mt-12 border-t-4 border-dashed border-black/20 pt-12">
+							<div class="mb-6">
+								<h2 class="mb-2 text-3xl font-black text-black">
+									📷 {ungroupedPhotos.length} Unique Photos
+								</h2>
+								<p class="text-lg font-semibold text-brutalist-gray">
+									These photos have no duplicates
+								</p>
 							</div>
-							<div class="ungrouped-grid">
+							<div class="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-4">
 								{#each ungroupedPhotos as photo (photo.id)}
-									<div class="ungrouped-photo">
-										<img src="data:image/jpeg;base64,{photo.base64}" alt="Unique" loading="lazy" />
+									<div
+										class="aspect-square overflow-hidden rounded-xl border-2 border-black bg-gray-100"
+									>
+										<img
+											src="data:image/jpeg;base64,{photo.base64}"
+											alt="Unique"
+											loading="lazy"
+											class="h-full w-full object-cover"
+										/>
 									</div>
 								{/each}
 							</div>
@@ -726,7 +916,7 @@
 <!-- Settings Modal -->
 {#if showSettings}
 	<div
-		class="modal"
+		class="fixed top-0 left-0 z-1000 flex h-full w-full items-center justify-center bg-black/50 backdrop-blur-sm"
 		role="dialog"
 		aria-modal="true"
 		aria-labelledby="settings-title"
@@ -738,19 +928,29 @@
 		}}
 		onkeydown={(e) => e.key === 'Escape' && (showSettings = false)}
 	>
-		<div class="modal-content" role="document">
-			<div class="modal-header">
-				<h2 id="settings-title">⚙️ Settings</h2>
-				<button class="modal-close" onclick={() => (showSettings = false)}>&times;</button>
+		<div
+			class="cozy-card shadow-brutalist-lg max-h-[90vh] w-[90%] max-w-2xl overflow-y-auto"
+			role="document"
+		>
+			<div class="flex items-center justify-between border-b-4 border-black p-6">
+				<h2 id="settings-title" class="text-3xl font-black text-black">⚙️ Settings</h2>
+				<button
+					class="h-8 w-8 cursor-pointer border-none bg-none p-0 text-5xl leading-none text-gray-400 transition-colors hover:text-gray-800"
+					onclick={() => (showSettings = false)}
+				>
+					&times;
+				</button>
 			</div>
-			<div class="modal-body">
-				<div class="setting-group">
-					<label for="similarityThreshold">
-						<strong>Match Sensitivity</strong>
-						<span class="setting-hint">How similar photos need to be</span>
+			<div class="p-6">
+				<div class="mb-8">
+					<label for="similarityThreshold" class="mb-3 flex flex-col gap-1">
+						<strong class="text-lg text-black">Match Sensitivity</strong>
+						<span class="text-sm font-medium text-brutalist-gray"
+							>How similar photos need to be</span
+						>
 					</label>
-					<div class="slider-container">
-						<span class="slider-label">Loose</span>
+					<div class="mb-2 flex items-center gap-3">
+						<span class="min-w-[50px] text-sm font-semibold text-brutalist-gray">Loose</span>
 						<input
 							type="range"
 							id="similarityThreshold"
@@ -758,18 +958,24 @@
 							min="0"
 							max="100"
 							step="1"
-							class="slider"
+							class="h-2 flex-1 appearance-none rounded-full border-2 border-black bg-gray-200 outline-none [&::-moz-range-thumb]:h-6 [&::-moz-range-thumb]:w-6 [&::-moz-range-thumb]:cursor-pointer [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-none [&::-moz-range-thumb]:border-white [&::-moz-range-thumb]:bg-black [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-white [&::-webkit-slider-thumb]:bg-black"
 						/>
-						<span class="slider-label">Strict</span>
+						<span class="min-w-[50px] text-sm font-semibold text-brutalist-gray">Strict</span>
 					</div>
-					<span class="slider-value">{similaritySliderPosition}% match required</span>
-					<span class="setting-hint">Lower values group more photos together (default: 70%)</span>
+					<span class="mb-1 block text-sm font-bold text-black"
+						>{similaritySliderPosition}% match required</span
+					>
+					<span class="text-sm text-brutalist-gray"
+						>Lower values group more photos together (default: 70%)</span
+					>
 				</div>
 
-				<div class="setting-group">
-					<label for="timeWindow">
-						<strong>Time Window</strong>
-						<span class="setting-hint">Photos taken within this time can be grouped</span>
+				<div class="mb-8">
+					<label for="timeWindow" class="mb-3 flex flex-col gap-1">
+						<strong class="text-lg text-black">Time Window</strong>
+						<span class="text-sm font-medium text-brutalist-gray"
+							>Photos taken within this time can be grouped</span
+						>
 					</label>
 					<input
 						type="number"
@@ -778,18 +984,20 @@
 						min="5"
 						max="1440"
 						step="5"
-						class="input"
+						class="mb-1 w-full rounded-xl border-4 border-black p-2.5 text-sm font-semibold focus:ring-4 focus:ring-pastel-purple-200 focus:outline-none"
 					/>
-					<span class="input-suffix">minutes</span>
-					<span class="setting-hint"
+					<span class="mb-1 block text-sm text-brutalist-gray">minutes</span>
+					<span class="text-sm text-brutalist-gray"
 						>Photos taken within this time window can be grouped (default: 60 minutes)</span
 					>
 				</div>
 
-				<div class="setting-group">
-					<label for="minGroupSize">
-						<strong>Minimum Photos per Group</strong>
-						<span class="setting-hint">Only show groups with at least this many photos</span>
+				<div class="mb-0">
+					<label for="minGroupSize" class="mb-3 flex flex-col gap-1">
+						<strong class="text-lg text-black">Minimum Photos per Group</strong>
+						<span class="text-sm font-medium text-brutalist-gray"
+							>Only show groups with at least this many photos</span
+						>
 					</label>
 					<input
 						type="number"
@@ -797,907 +1005,48 @@
 						bind:value={editingSettings.minGroupSize}
 						min="2"
 						max="10"
-						class="input"
+						class="mb-1 w-full rounded-xl border-4 border-black p-2.5 text-sm font-semibold focus:ring-4 focus:ring-pastel-purple-200 focus:outline-none"
 					/>
-					<span class="input-suffix">photos</span>
+					<span class="text-sm text-brutalist-gray">photos</span>
 				</div>
 			</div>
-			<div class="modal-footer">
-				<button class="btn btn-secondary" onclick={() => (showSettings = false)}>Cancel</button>
-				<button class="btn btn-primary" onclick={handleSaveSettings}>Save</button>
+			<div class="flex justify-end gap-3 border-t-4 border-black p-6">
+				<button
+					class="shadow-brutalist hover:shadow-brutalist-lg rounded-xl border-4 border-black bg-pastel-purple-200 px-6 py-3 font-bold text-black transition-all hover:translate-x-[-2px] hover:translate-y-[-2px]"
+					onclick={() => (showSettings = false)}
+				>
+					Cancel
+				</button>
+				<button
+					class="shadow-brutalist hover:shadow-brutalist-lg rounded-xl border-4 border-black bg-linear-to-br from-pastel-pink-200 to-pastel-pink-300 px-6 py-3 font-black text-black transition-all hover:translate-x-[-2px] hover:translate-y-[-2px]"
+					onclick={handleSaveSettings}
+				>
+					Save
+				</button>
 			</div>
 		</div>
 	</div>
 {/if}
 
 <style>
-	:global(body) {
-		margin: 0;
-		padding: 0;
-		background: #f5f7fa;
-		font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-	}
-
-	.app-container {
-		max-width: 1200px;
-		margin: 0 auto;
-		padding: 32px 20px;
-	}
-
-	/* Header */
-	.header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		margin-bottom: 40px;
-	}
-
-	.header-content {
-		text-align: center;
-		flex: 1;
-	}
-
-	.logo {
-		font-size: 36px;
-		font-weight: 700;
-		color: #667eea;
-		margin: 0 0 8px 0;
-	}
-
-	.subtitle {
-		font-size: 18px;
-		color: #64748b;
-		margin: 0;
-	}
-
-	.settings-btn {
-		padding: 10px 16px;
-		background: #f1f5f9;
-		border: none;
-		border-radius: 8px;
-		font-size: 20px;
-		cursor: pointer;
-		transition: all 0.2s;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-	}
-
-	.settings-btn:hover {
-		background: #e2e8f0;
-	}
-
-	/* Steps */
-	.steps {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		margin-bottom: 48px;
-		padding: 0 20px;
-	}
-
-	.step {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 8px;
-	}
-
-	.step-number {
-		width: 48px;
-		height: 48px;
-		border-radius: 50%;
-		background: #e2e8f0;
-		color: #94a3b8;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		font-weight: 700;
-		font-size: 20px;
-		transition: all 0.3s;
-	}
-
-	.step.active .step-number {
-		background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-		color: white;
-		box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-	}
-
-	.step.done .step-number {
-		background: #10b981;
-		color: white;
-	}
-
-	.step-label {
-		font-size: 14px;
-		font-weight: 600;
-		color: #64748b;
-	}
-
-	.step.active .step-label {
-		color: #667eea;
-	}
-
-	.step-line {
-		width: 80px;
-		height: 3px;
-		background: #e2e8f0;
-		transition: all 0.3s;
-	}
-
-	.step-line.done {
-		background: #10b981;
-	}
-
-	/* Main Content */
-	.main-content {
-		background: white;
-		border-radius: 20px;
-		padding: 48px;
-		box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
-		min-height: 400px;
-	}
-
-	/* Welcome Screen */
-	.welcome-screen {
-		text-align: center;
-		max-width: 600px;
-		margin: 0 auto;
-		padding: 40px 20px;
-	}
-
-	.welcome-icon {
-		font-size: 80px;
-		margin-bottom: 24px;
-	}
-
-	.welcome-screen h2 {
-		font-size: 32px;
-		color: #1e293b;
-		margin-bottom: 16px;
-	}
-
-	.welcome-text {
-		font-size: 18px;
-		color: #64748b;
-		margin-bottom: 48px;
-		line-height: 1.6;
-	}
-
-	.instructions {
-		display: flex;
-		flex-direction: column;
-		gap: 24px;
-		text-align: left;
-	}
-
-	.instruction-step {
-		display: flex;
-		align-items: flex-start;
-		gap: 16px;
-		background: #f8fafc;
-		padding: 20px;
-		border-radius: 12px;
-	}
-
-	.instruction-number {
-		width: 32px;
-		height: 32px;
-		border-radius: 50%;
-		background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-		color: white;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		font-weight: 700;
-		flex-shrink: 0;
-	}
-
-	.instruction-text {
-		font-size: 16px;
-		color: #475569;
-		line-height: 1.6;
-	}
-
-	/* Preview Screen */
-	.preview-screen {
-		padding: 20px;
-	}
-
-	.preview-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: flex-start;
-		margin-bottom: 32px;
-		padding-bottom: 24px;
-		border-bottom: 2px solid #e2e8f0;
-	}
-
-	/* Indexed Screen */
-	.indexed-screen {
-		padding: 20px;
-	}
-
-	.indexed-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: flex-start;
-		margin-bottom: 32px;
-		padding-bottom: 24px;
-		border-bottom: 2px solid #e2e8f0;
-	}
-
-	.indexed-title-section {
-		display: flex;
-		flex-direction: column;
-		gap: 12px;
-	}
-
-	.btn-back {
-		padding: 8px 16px;
-		background: #f1f5f9;
-		border: none;
-		border-radius: 8px;
-		font-size: 14px;
-		font-weight: 600;
-		color: #475569;
-		cursor: pointer;
-		transition: all 0.2s;
-		align-self: flex-start;
-	}
-
-	.btn-back:hover {
-		background: #e2e8f0;
-	}
-
-	.indexed-header h2 {
-		font-size: 28px;
-		color: #1e293b;
-		margin: 0 0 8px 0;
-	}
-
-	.indexed-subtitle {
-		font-size: 16px;
-		color: #64748b;
-		margin: 0;
-	}
-
-	.indexed-actions {
-		display: flex;
-		gap: 12px;
-	}
-
-	.preview-header h2 {
-		font-size: 28px;
-		color: #1e293b;
-		margin: 0 0 8px 0;
-	}
-
-	.preview-subtitle {
-		font-size: 16px;
-		color: #64748b;
-		margin: 0;
-	}
-
-	.preview-actions {
-		display: flex;
-		gap: 12px;
-	}
-
-	.photo-grid,
-	.ungrouped-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-		gap: 16px;
-	}
-
-	.photo-preview,
-	.ungrouped-photo {
-		aspect-ratio: 1;
-		border-radius: 8px;
-		overflow: hidden;
-		background: #f1f5f9;
-	}
-
-	.photo-preview img,
-	.ungrouped-photo img {
-		width: 100%;
-		height: 100%;
-		object-fit: cover;
-	}
-
-	/* Processing Screen */
-	.processing-screen {
-		text-align: center;
-		padding: 20px 10px;
-	}
-
-	.spinner {
-		width: 60px;
-		height: 60px;
-		border: 5px solid #e2e8f0;
-		border-top-color: #667eea;
-		border-radius: 50%;
-		animation: spin 1s linear infinite;
-		margin: 0 auto 32px;
-	}
-
-	@keyframes spin {
-		to {
-			transform: rotate(360deg);
+	/* Gentle bounce animation for welcome screen */
+	@keyframes gentle-bounce {
+		0%,
+		100% {
+			transform: translateY(0px) rotate(0deg);
+		}
+		25% {
+			transform: translateY(-8px) rotate(-2deg);
+		}
+		75% {
+			transform: translateY(-5px) rotate(2deg);
 		}
 	}
 
-	.processing-screen h2 {
-		font-size: 28px;
-		color: #1e293b;
-		margin-bottom: 12px;
-	}
-
-	.processing-text {
-		font-size: 16px;
-		color: #64748b;
-		margin-bottom: 40px;
-	}
-
-	.stats-grid {
-		display: grid;
-		grid-template-columns: repeat(2, 1fr);
-		gap: 20px;
-		max-width: 500px;
-		margin: 0 auto 32px;
-	}
-
-	.stat-box {
-		background: #f8fafc;
-		padding: 24px;
-		border-radius: 12px;
-	}
-
-	.stat-number {
-		font-size: 36px;
-		font-weight: 700;
-		color: #667eea;
-		margin-bottom: 8px;
-	}
-
-	.stat-label {
-		font-size: 14px;
-		color: #64748b;
-		text-transform: uppercase;
-		letter-spacing: 0.5px;
-	}
-
-	.progress-container {
-		max-width: 600px;
-		margin: 32px auto 0;
-	}
-
-	.progress-bar-wrapper {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		margin-bottom: 12px;
-	}
-
-	.progress-percentage {
-		font-size: 18px;
-		font-weight: 700;
-		color: #667eea;
-		min-width: 50px;
-	}
-
-	.progress-bar {
-		flex: 1;
-		height: 12px;
-		background: #e2e8f0;
-		border-radius: 6px;
-		overflow: hidden;
-	}
-
-	.progress-fill {
-		height: 100%;
-		background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-		transition: width 0.3s;
-		box-shadow: 0 0 10px rgba(102, 126, 234, 0.5);
-	}
-
-	.progress-info {
-		display: flex;
-		justify-content: flex-end;
-		align-items: center;
-	}
-
-	.time-estimate {
-		font-size: 14px;
-		color: #667eea;
-		font-weight: 600;
-	}
-
-	.processing-note {
-		margin-top: 48px;
-		padding: 16px 24px;
-		background: #f0f9ff;
-		border: 1px solid #bae6fd;
-		border-radius: 12px;
-		display: inline-flex;
-		align-items: center;
-		gap: 10px;
-		max-width: 700px;
-	}
-
-	.note-icon {
-		font-size: 20px;
-		flex-shrink: 0;
-	}
-
-	.note-text {
-		font-size: 14px;
-		color: #0369a1;
-		line-height: 1.5;
-	}
-
-	/* No Duplicates */
-	.no-duplicates {
-		text-align: center;
-		padding: 80px 20px;
-	}
-
-	.no-duplicates-icon {
-		font-size: 80px;
-		margin-bottom: 24px;
-	}
-
-	.no-duplicates h2 {
-		font-size: 32px;
-		color: #1e293b;
-		margin-bottom: 12px;
-	}
-
-	.no-duplicates p {
-		font-size: 18px;
-		color: #64748b;
-		margin-bottom: 32px;
-	}
-
-	.action-buttons {
-		display: flex;
-		gap: 12px;
-		justify-content: center;
-	}
-
-	/* Review Screen */
-	.review-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: flex-start;
-		margin-bottom: 32px;
-		padding-bottom: 24px;
-		border-bottom: 2px solid #e2e8f0;
-	}
-
-	.review-title-section {
-		display: flex;
-		flex-direction: column;
-		gap: 12px;
-	}
-
-	.review-header h2 {
-		font-size: 28px;
-		color: #1e293b;
-		margin: 0 0 8px 0;
-	}
-
-	.review-subtitle {
-		font-size: 16px;
-		color: #64748b;
-		margin: 0;
-	}
-
-	.review-actions {
-		display: flex;
-		gap: 12px;
-	}
-
-	/* Groups */
-	.groups-container {
-		display: flex;
-		flex-direction: column;
-		gap: 32px;
-		margin-bottom: 48px;
-	}
-
-	.group-card {
-		background: #f8fafc;
-		border-radius: 16px;
-		padding: 24px;
-		border: 2px solid #e2e8f0;
-		transition: all 0.2s;
-	}
-
-	.group-card:hover {
-		border-color: #667eea;
-		box-shadow: 0 4px 16px rgba(102, 126, 234, 0.1);
-	}
-
-	.group-card.loading {
-		min-height: 200px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-	}
-
-	.loading-spinner {
-		width: 40px;
-		height: 40px;
-		border: 4px solid #e2e8f0;
-		border-top-color: #667eea;
-		border-radius: 50%;
-		animation: spin 1s linear infinite;
-	}
-
-	.group-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		margin-bottom: 20px;
-	}
-
-	.group-header h3 {
-		font-size: 20px;
-		color: #1e293b;
-		margin: 0;
-	}
-
-	.group-photos {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-		gap: 16px;
-	}
-
-	.photo-card {
-		position: relative;
-		aspect-ratio: 1;
-		border-radius: 12px;
-		overflow: hidden;
-		cursor: pointer;
-		border: 3px solid transparent;
-		transition: all 0.2s;
-		background: none;
-		padding: 0;
-	}
-
-	.photo-card:hover {
-		transform: scale(1.05);
-		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
-	}
-
-	.photo-card.selected {
-		border-color: #ef4444;
-	}
-
-	.photo-card img {
-		width: 100%;
-		height: 100%;
-		object-fit: cover;
-	}
-
-	.photo-overlay {
-		position: absolute;
-		bottom: 0;
-		left: 0;
-		right: 0;
-		background: linear-gradient(to top, rgba(0, 0, 0, 0.7), transparent);
-		padding: 12px;
-		display: flex;
-		justify-content: center;
-	}
-
-	.photo-badge {
-		background: rgba(255, 255, 255, 0.9);
-		color: #1e293b;
-		padding: 6px 12px;
-		border-radius: 20px;
-		font-size: 13px;
-		font-weight: 600;
-	}
-
-	.photo-badge.selected {
-		background: #ef4444;
-		color: white;
-	}
-
-	/* Ungrouped Section */
-	.ungrouped-section {
-		margin-top: 48px;
-		padding-top: 48px;
-		border-top: 3px dashed #e2e8f0;
-	}
-
-	.section-header {
-		margin-bottom: 24px;
-	}
-
-	.section-header h2 {
-		font-size: 24px;
-		color: #1e293b;
-		margin: 0 0 8px 0;
-	}
-
-	.section-subtitle {
-		font-size: 16px;
-		color: #64748b;
-		margin: 0;
-	}
-
-	/* Buttons */
-	.btn {
-		padding: 12px 24px;
-		border: none;
-		border-radius: 8px;
-		font-size: 15px;
-		font-weight: 600;
-		cursor: pointer;
-		transition: all 0.2s;
-		white-space: nowrap;
-	}
-
-	.btn-primary {
-		background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-		color: white;
-		box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
-	}
-
-	.btn-primary:hover {
-		transform: translateY(-2px);
-		box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
-	}
-
-	.btn-secondary {
-		background: #e2e8f0;
-		color: #475569;
-	}
-
-	.btn-secondary:hover {
-		background: #cbd5e1;
-	}
-
-	.btn-danger-outline {
-		background: white;
-		color: #ef4444;
-		border: 2px solid #ef4444;
-	}
-
-	.btn-danger-outline:hover {
-		background: #fef2f2;
-	}
-
-	.btn-link {
-		background: none;
-		border: none;
-		color: #667eea;
-		font-size: 14px;
-		font-weight: 600;
-		cursor: pointer;
-		padding: 4px 8px;
-	}
-
-	.btn-link:hover {
-		text-decoration: underline;
-	}
-
-	/* Modal */
-	.modal {
-		position: fixed;
-		top: 0;
-		left: 0;
-		width: 100%;
-		height: 100%;
-		background: rgba(0, 0, 0, 0.5);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		z-index: 1000;
-		backdrop-filter: blur(4px);
-	}
-
-	.modal-content {
-		background: white;
-		border-radius: 16px;
-		width: 90%;
-		max-width: 600px;
-		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-		max-height: 90vh;
-		overflow-y: auto;
-	}
-
-	.modal-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		padding: 24px;
-		border-bottom: 1px solid #e2e8f0;
-	}
-
-	.modal-header h2 {
-		font-size: 24px;
-		color: #1e293b;
-		margin: 0;
-	}
-
-	.modal-close {
-		background: none;
-		border: none;
-		font-size: 32px;
-		color: #999;
-		cursor: pointer;
-		line-height: 1;
-		padding: 0;
-		width: 32px;
-		height: 32px;
-	}
-
-	.modal-close:hover {
-		color: #333;
-	}
-
-	.modal-body {
-		padding: 24px;
-	}
-
-	.modal-footer {
-		padding: 24px;
-		border-top: 1px solid #e2e8f0;
-		display: flex;
-		justify-content: flex-end;
-		gap: 12px;
-	}
-
-	.setting-group {
-		margin-bottom: 32px;
-	}
-
-	.setting-group:last-child {
-		margin-bottom: 0;
-	}
-
-	.setting-group label {
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-		margin-bottom: 12px;
-	}
-
-	.setting-hint {
-		font-size: 13px;
-		color: #64748b;
-		font-weight: 400;
-	}
-
-	.slider-container {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		margin-bottom: 8px;
-	}
-
-	.slider-label {
-		font-size: 13px;
-		color: #64748b;
-		min-width: 50px;
-	}
-
-	.slider {
-		flex: 1;
-		height: 6px;
-		border-radius: 3px;
-		background: #e2e8f0;
-		outline: none;
-		appearance: none;
-		-webkit-appearance: none;
-	}
-
-	.slider::-webkit-slider-thumb {
-		-webkit-appearance: none;
-		appearance: none;
-		width: 20px;
-		height: 20px;
-		border-radius: 50%;
-		background: #667eea;
-		cursor: pointer;
-	}
-
-	.slider::-moz-range-thumb {
-		width: 20px;
-		height: 20px;
-		border-radius: 50%;
-		background: #667eea;
-		cursor: pointer;
-		border: none;
-	}
-
-	.slider-value {
-		font-size: 14px;
-		color: #667eea;
-		font-weight: 600;
-	}
-
-	.input {
-		width: 100%;
-		padding: 10px;
-		border: 2px solid #e2e8f0;
-		border-radius: 8px;
-		font-size: 14px;
-		margin-bottom: 4px;
-	}
-
-	.input:focus {
-		outline: none;
-		border-color: #667eea;
-	}
-
-	.input-suffix {
-		font-size: 13px;
-		color: #64748b;
-	}
-
-	/* Responsive */
+	/* Responsive adjustments */
 	@media (max-width: 768px) {
-		.main-content {
-			padding: 24px;
-		}
-
-		.header {
-			flex-direction: column;
-			gap: 16px;
-		}
-
-		.review-header,
-		.preview-header,
-		.indexed-header {
-			flex-direction: column;
-			gap: 20px;
-		}
-
-		.indexed-title-section,
-		.review-title-section {
-			width: 100%;
-		}
-
-		.review-actions,
-		.preview-actions,
-		.indexed-actions {
-			width: 100%;
-			flex-direction: column;
-		}
-
-		.review-actions .btn,
-		.preview-actions .btn,
-		.indexed-actions .btn {
-			width: 100%;
-		}
-
-		.group-photos,
-		.photo-grid,
-		.ungrouped-grid {
-			grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-		}
-
-		.steps {
-			transform: scale(0.85);
-		}
-
-		.step-line {
-			width: 40px;
-		}
-
-		.action-buttons {
-			flex-direction: column;
-			width: 100%;
-		}
-
-		.action-buttons .btn {
-			width: 100%;
+		.cozy-card {
+			padding: 24px !important;
 		}
 	}
 </style>

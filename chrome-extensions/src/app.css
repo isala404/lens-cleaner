@@ -1,24 +1,66 @@
 @import 'tailwindcss';
+
+/* Soft Brutalism Design System - Watercolor Pastels & Cozy Productivity */
+
+@theme {
+	/* Pastel Pink Palette - Watercolor Washes */
+	--color-pastel-pink-50: #fff5f7;
+	--color-pastel-pink-100: #ffe5ec;
+	--color-pastel-pink-200: #ffd6e0;
+	--color-pastel-pink-300: #ffc4d0;
+	--color-pastel-pink-400: #ffb3c1;
+
+	/* Pastel Purple Palette - Dreamy Atmosphere */
+	--color-pastel-purple-50: #f5f3ff;
+	--color-pastel-purple-100: #e5deff;
+	--color-pastel-purple-200: #d4c5f9;
+	--color-pastel-purple-300: #c3b1e1;
+	--color-pastel-purple-400: #b8a7d9;
+
+	/* Pastel Blue Palette - Ethereal Tones */
+	--color-pastel-blue-50: #f0f9ff;
+	--color-pastel-blue-100: #e0f2fe;
+	--color-pastel-blue-200: #bae6fd;
+	--color-pastel-blue-300: #7dd3fc;
+	--color-pastel-blue-400: #5ec4f7;
+
+	/* Brutalism Accents */
+	--color-brutalist-black: #000000;
+	--color-brutalist-gray: #404040;
+
+	/* Soft Warm Accents */
+	--color-warm-peach: #ffe4d6;
+	--color-warm-cream: #fff8f0;
+}
+
 /* Global Styles */
-* {
+/* * {
 	margin: 0;
 	padding: 0;
 	box-sizing: border-box;
-}
+} */
 
 :root {
 	font-family:
 		-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
 	line-height: 1.5;
 	font-weight: 400;
-	color: #333;
-	background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-	min-height: 100vh;
 }
 
 body {
 	margin: 0;
 	min-height: 100vh;
+	/* Soft watercolor background gradient */
+	background:
+		linear-gradient(
+			135deg,
+			rgba(255, 229, 236, 0.4) 0%,
+			rgba(229, 222, 255, 0.4) 33%,
+			rgba(224, 242, 254, 0.4) 66%,
+			rgba(255, 228, 214, 0.4) 100%
+		),
+		linear-gradient(45deg, #ffe5ec 0%, #e5deff 50%, #e0f2fe 100%);
+	background-attachment: fixed;
 }
 
 #app {
@@ -29,4 +71,65 @@ body {
 
 .hidden {
 	display: none !important;
+}
+
+/* Watercolor texture overlay effect */
+@keyframes watercolor-drift {
+	0%,
+	100% {
+		background-position:
+			0% 50%,
+			100% 50%;
+	}
+	50% {
+		background-position:
+			100% 50%,
+			0% 50%;
+	}
+}
+
+/* Hand-drawn accent underlines */
+.hand-drawn-underline {
+	position: relative;
+}
+
+.hand-drawn-underline::after {
+	content: '';
+	position: absolute;
+	bottom: -8px;
+	left: 0;
+	right: 0;
+	height: 4px;
+	background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 4'%3E%3Cpath d='M0,2 Q25,0 50,2 T100,2' stroke='%23000' stroke-width='2' fill='none'/%3E%3C/svg%3E");
+	background-repeat: repeat-x;
+	background-size: 100px 4px;
+}
+
+/* Soft shadow utilities */
+.shadow-brutalist {
+	box-shadow: 6px 6px 0px rgba(0, 0, 0, 1);
+}
+
+.shadow-brutalist-sm {
+	box-shadow: 3px 3px 0px rgba(0, 0, 0, 1);
+}
+
+.shadow-brutalist-lg {
+	box-shadow: 10px 10px 0px rgba(0, 0, 0, 1);
+}
+
+/* Organic textures */
+.organic-texture {
+	background-image:
+		radial-gradient(circle at 20% 50%, rgba(255, 229, 236, 0.3) 0%, transparent 50%),
+		radial-gradient(circle at 80% 80%, rgba(229, 222, 255, 0.3) 0%, transparent 50%),
+		radial-gradient(circle at 40% 20%, rgba(224, 242, 254, 0.3) 0%, transparent 50%);
+}
+
+/* Cozy card style */
+.cozy-card {
+	background: linear-gradient(135deg, rgba(255, 248, 240, 0.95) 0%, rgba(255, 255, 255, 0.95) 100%);
+	border: 4px solid #000;
+	border-radius: 20px;
+	position: relative;
 }

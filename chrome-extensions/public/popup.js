@@ -59,7 +59,7 @@ function updateButtonStates() {
 		startBtn.classList.remove('hidden');
 		startBtn.disabled = false;
 		startBtn.textContent = '⏹ Stop Scanning';
-		startBtn.classList.remove('btn-primary', 'btn-secondary');
+		startBtn.classList.remove('btn-primary', 'btn-secondary', 'btn-success');
 		startBtn.classList.add('btn-danger');
 		if (clearBtn) {
 			clearBtn.classList.add('hidden');
@@ -84,8 +84,8 @@ function updateButtonStates() {
 		}
 		if (dashboardBtn) {
 			dashboardBtn.style.display = 'block';
-			dashboardBtn.classList.remove('btn-secondary');
-			dashboardBtn.classList.add('btn-primary');
+			dashboardBtn.classList.remove('btn-secondary', 'btn-primary');
+			dashboardBtn.classList.add('btn-success');
 			dashboardBtn.textContent = '📊 Review Duplicates';
 		}
 		// Show duplicate groups row when done
@@ -97,9 +97,15 @@ function updateButtonStates() {
 			messageEl.classList.add('hidden');
 		}
 	} else {
-		// No scanned photos - show "Find Duplicates" as primary, hide "View Results"
-		startBtn.classList.remove('hidden', 'btn-danger-outline', 'btn-secondary', 'btn-danger');
-		startBtn.classList.add('btn-primary');
+		// No scanned photos - show "Find Duplicates" as success (green), hide "View Results"
+		startBtn.classList.remove(
+			'hidden',
+			'btn-danger-outline',
+			'btn-secondary',
+			'btn-danger',
+			'btn-primary'
+		);
+		startBtn.classList.add('btn-success');
 		startBtn.disabled = false;
 		startBtn.textContent = '🔍 Find Duplicates';
 		if (clearBtn) {
