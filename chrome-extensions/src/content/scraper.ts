@@ -284,7 +284,9 @@ function parseAriaLabel(ariaLabel: string) {
 		if (!isNaN(dateObject.getTime())) {
 			dateTaken = dateObject.toISOString();
 		} else {
-			console.warn(`Failed to parse date with time: "${dateString}" from aria-label: "${ariaLabel}"`);
+			console.warn(
+				`Failed to parse date with time: "${dateString}" from aria-label: "${ariaLabel}"`
+			);
 		}
 	} else {
 		dateMatch = ariaLabel.match(/(\w{3} \d{1,2}, \d{4})/);

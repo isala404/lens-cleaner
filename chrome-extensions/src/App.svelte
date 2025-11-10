@@ -20,6 +20,16 @@
 
 	import db, { type Group, type Photo } from './lib/db';
 
+	// Components
+	import Header from './components/Header.svelte';
+	import ProgressSteps from './components/ProgressSteps.svelte';
+	import WelcomeScreen from './components/WelcomeScreen.svelte';
+	import PreviewScreen from './components/PreviewScreen.svelte';
+	import IndexedScreen from './components/IndexedScreen.svelte';
+	import ProcessingScreen from './components/ProcessingScreen.svelte';
+	import ReviewScreen from './components/ReviewScreen.svelte';
+	import SettingsModal from './components/SettingsModal.svelte';
+
 	let currentStep: 'welcome' | 'preview' | 'indexing' | 'indexed' | 'grouping' | 'reviewing' =
 		'welcome';
 
@@ -391,668 +401,74 @@
 
 <div class="mx-auto max-w-7xl px-5 py-8">
 	<!-- Header -->
-	<header class="mb-12 flex items-center justify-center">
-		<div class="flex-1 text-center">
-			<h1 class="mb-3 text-6xl font-black tracking-tight text-black">📸 Lens Cleaner</h1>
-			<p class="text-xl font-semibold text-brutalist-gray">Find and delete duplicate photos</p>
-		</div>
-	</header>
+	<Header />
 
 	<!-- Progress Steps -->
-	<div class="mb-14 flex items-center justify-center px-5">
-		<div class="flex flex-col items-center gap-2">
-			<div
-				class="flex h-16 w-16 items-center justify-center rounded-full border-4 border-black text-2xl font-black transition-all duration-300"
-				class:bg-pastel-pink-200={currentStep === 'welcome' || currentStep === 'preview'}
-				class:shadow-brutalist-sm={currentStep === 'welcome' || currentStep === 'preview'}
-				class:bg-emerald-400={currentStep === 'indexing' ||
-					currentStep === 'indexed' ||
-					currentStep === 'grouping' ||
-					currentStep === 'reviewing'}
-				class:text-white={currentStep === 'indexing' ||
-					currentStep === 'indexed' ||
-					currentStep === 'grouping' ||
-					currentStep === 'reviewing'}
-				class:bg-gray-200={currentStep !== 'welcome' &&
-					currentStep !== 'preview' &&
-					currentStep !== 'indexing' &&
-					currentStep !== 'indexed' &&
-					currentStep !== 'grouping' &&
-					currentStep !== 'reviewing'}
-			>
-				1
-			</div>
-			<div
-				class="text-sm font-bold"
-				class:text-black={currentStep === 'welcome' || currentStep === 'preview'}
-				class:text-gray-500={currentStep !== 'welcome' && currentStep !== 'preview'}
-			>
-				Scan Photos
-			</div>
-		</div>
-		<div
-			class="mx-1 h-1 w-20 transition-all duration-300"
-			class:bg-emerald-400={currentStep === 'indexing' ||
-				currentStep === 'indexed' ||
-				currentStep === 'grouping' ||
-				currentStep === 'reviewing'}
-			class:bg-gray-300={currentStep === 'welcome' || currentStep === 'preview'}
-		></div>
-		<div class="flex flex-col items-center gap-2">
-			<div
-				class="flex h-16 w-16 items-center justify-center rounded-full border-4 border-black text-2xl font-black transition-all duration-300"
-				class:bg-pastel-purple-200={currentStep === 'indexing'}
-				class:shadow-brutalist-sm={currentStep === 'indexing'}
-				class:bg-emerald-400={currentStep === 'indexed' ||
-					currentStep === 'grouping' ||
-					currentStep === 'reviewing'}
-				class:text-white={currentStep === 'indexed' ||
-					currentStep === 'grouping' ||
-					currentStep === 'reviewing'}
-				class:bg-gray-200={currentStep !== 'indexing' &&
-					currentStep !== 'indexed' &&
-					currentStep !== 'grouping' &&
-					currentStep !== 'reviewing'}
-			>
-				2
-			</div>
-			<div
-				class="text-sm font-bold"
-				class:text-black={currentStep === 'indexing'}
-				class:text-gray-500={currentStep !== 'indexing'}
-			>
-				Index Photos
-			</div>
-		</div>
-		<div
-			class="mx-1 h-1 w-20 transition-all duration-300"
-			class:bg-emerald-400={currentStep === 'indexed' ||
-				currentStep === 'grouping' ||
-				currentStep === 'reviewing'}
-			class:bg-gray-300={currentStep === 'welcome' ||
-				currentStep === 'preview' ||
-				currentStep === 'indexing'}
-		></div>
-		<div class="flex flex-col items-center gap-2">
-			<div
-				class="flex h-16 w-16 items-center justify-center rounded-full border-4 border-black text-2xl font-black transition-all duration-300"
-				class:bg-pastel-blue-200={currentStep === 'indexed' || currentStep === 'grouping'}
-				class:shadow-brutalist-sm={currentStep === 'indexed' || currentStep === 'grouping'}
-				class:bg-emerald-400={currentStep === 'reviewing'}
-				class:text-white={currentStep === 'reviewing'}
-				class:bg-gray-200={currentStep !== 'indexed' &&
-					currentStep !== 'grouping' &&
-					currentStep !== 'reviewing'}
-			>
-				3
-			</div>
-			<div
-				class="text-sm font-bold"
-				class:text-black={currentStep === 'indexed' || currentStep === 'grouping'}
-				class:text-gray-500={currentStep !== 'indexed' && currentStep !== 'grouping'}
-			>
-				Find Duplicates
-			</div>
-		</div>
-		<div
-			class="mx-1 h-1 w-20 transition-all duration-300"
-			class:bg-emerald-400={currentStep === 'reviewing'}
-			class:bg-gray-300={currentStep !== 'reviewing'}
-		></div>
-		<div class="flex flex-col items-center gap-2">
-			<div
-				class="flex h-16 w-16 items-center justify-center rounded-full border-4 border-black text-2xl font-black transition-all duration-300"
-				class:bg-pastel-pink-300={currentStep === 'reviewing'}
-				class:shadow-brutalist-sm={currentStep === 'reviewing'}
-				class:bg-gray-200={currentStep !== 'reviewing'}
-			>
-				4
-			</div>
-			<div
-				class="text-sm font-bold"
-				class:text-black={currentStep === 'reviewing'}
-				class:text-gray-500={currentStep !== 'reviewing'}
-			>
-				Review & Delete
-			</div>
-		</div>
-	</div>
+	<ProgressSteps {currentStep} />
 
 	<!-- Main Content -->
 	<main class="cozy-card shadow-brutalist-lg min-h-[400px] p-12">
 		{#if currentStep === 'welcome'}
-			<!-- Welcome Screen -->
-			<div class="mx-auto max-w-2xl px-5 py-10 text-center">
-				<div class="mb-6 animate-[gentle-bounce_4s_ease-in-out_infinite] text-8xl">📷</div>
-				<h2 class="mb-4 text-5xl font-black tracking-tight text-black">Welcome to Lens Cleaner!</h2>
-				<p class="mb-12 text-xl leading-relaxed font-medium text-brutalist-gray">
-					Let's find and remove duplicate photos from your Google Photos library.
-				</p>
-				<div class="flex flex-col gap-6 text-left">
-					<div
-						class="shadow-brutalist-sm flex items-start gap-4 rounded-2xl border-4 border-black bg-pastel-pink-100 p-5"
-					>
-						<div
-							class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-black font-black text-white"
-						>
-							1
-						</div>
-						<div class="text-base leading-relaxed text-brutalist-gray">
-							<strong class="text-black">Click the extension icon</strong> while on Google Photos
-						</div>
-					</div>
-					<div
-						class="shadow-brutalist-sm flex items-start gap-4 rounded-2xl border-4 border-black bg-pastel-purple-100 p-5"
-					>
-						<div
-							class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-black font-black text-white"
-						>
-							2
-						</div>
-						<div class="text-base leading-relaxed text-brutalist-gray">
-							<strong class="text-black">Click "Find Duplicates"</strong> to scan your photos
-						</div>
-					</div>
-					<div
-						class="shadow-brutalist-sm flex items-start gap-4 rounded-2xl border-4 border-black bg-pastel-blue-100 p-5"
-					>
-						<div
-							class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-black font-black text-white"
-						>
-							3
-						</div>
-						<div class="text-base leading-relaxed text-brutalist-gray">
-							<strong class="text-black">Come back here</strong> to see and delete duplicates
-						</div>
-					</div>
-				</div>
-			</div>
+			<WelcomeScreen />
 		{:else if currentStep === 'preview'}
-			<!-- Preview Screen -->
-			<div class="p-5">
-				<div class="mb-8 flex items-start justify-between border-b-4 border-black pb-6">
-					<div>
-						<h2 class="mb-2 text-4xl font-black text-black">
-							📷 {$appStore.stats.totalPhotos} Photos Scanned
-						</h2>
-						<p class="text-lg font-semibold text-brutalist-gray">
-							Review your scanned photos before indexing
-						</p>
-					</div>
-					<div class="flex gap-3">
-						<button
-							onclick={handleStartIndexing}
-							class="shadow-brutalist hover:shadow-brutalist-lg rounded-xl border-4 border-black bg-linear-to-br from-pastel-pink-200 to-pastel-pink-300 px-6 py-3 text-lg font-black text-black transition-all hover:translate-x-[-2px] hover:translate-y-[-2px]"
-						>
-							🧠 Start Indexing
-						</button>
-					</div>
-				</div>
-
-				<div class="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-4">
-					{#each $appStore.photos as photo (photo.id)}
-						<div class="aspect-square overflow-hidden rounded-xl border-2 border-black bg-gray-100">
-							<img
-								src={getCachedBlobUrl(photo)}
-								alt="Scanned"
-								loading="lazy"
-								class="h-full w-full object-cover"
-							/>
-						</div>
-					{/each}
-				</div>
-			</div>
+			<PreviewScreen
+				totalPhotos={$appStore.stats.totalPhotos}
+				photos={$appStore.photos}
+				onStartIndexing={handleStartIndexing}
+				{getCachedBlobUrl}
+			/>
 		{:else if currentStep === 'indexed'}
-			<!-- Indexed Screen - Show indexed photos with grouping options -->
-			<div class="p-5">
-				<div class="mb-8 flex items-start justify-between border-b-4 border-black pb-6">
-					<div class="flex flex-col gap-3">
-						<button
-							onclick={handleReindex}
-							class="self-start rounded-lg border-2 border-black bg-gray-200 px-4 py-2 text-sm font-bold text-brutalist-gray transition-all hover:bg-gray-300"
-						>
-							← Reindex
-						</button>
-						<div>
-							<h2 class="mb-2 text-4xl font-black text-black">
-								✅ {$appStore.stats.photosWithEmbeddings} Photos Indexed
-							</h2>
-							<p class="text-lg font-semibold text-brutalist-gray">
-								Ready to find duplicates. Adjust settings if needed before grouping.
-							</p>
-						</div>
-					</div>
-					<div class="flex gap-3">
-						<button
-							onclick={handleStartGrouping}
-							class="shadow-brutalist hover:shadow-brutalist-lg rounded-xl border-4 border-black bg-linear-to-br from-pastel-blue-200 to-pastel-blue-300 px-6 py-3 text-lg font-black text-black transition-all hover:translate-x-[-2px] hover:translate-y-[-2px]"
-						>
-							🔍 Start Grouping
-						</button>
-						<button
-							onclick={handleOpenSettings}
-							class="flex items-center justify-center rounded-xl border-4 border-black bg-pastel-purple-100 px-4 py-3 text-2xl transition-all hover:bg-pastel-purple-200"
-						>
-							⚙️
-						</button>
-					</div>
-				</div>
-
-				<div class="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-4">
-					{#each $appStore.photos as photo (photo.id)}
-						<div class="aspect-square overflow-hidden rounded-xl border-2 border-black bg-gray-100">
-							<img
-								src={getCachedBlobUrl(photo)}
-								alt="Indexed"
-								loading="lazy"
-								class="h-full w-full object-cover"
-							/>
-						</div>
-					{/each}
-				</div>
-			</div>
+			<IndexedScreen
+				photosWithEmbeddings={$appStore.stats.photosWithEmbeddings}
+				photos={$appStore.photos}
+				onStartGrouping={handleStartGrouping}
+				onReindex={handleReindex}
+				onOpenSettings={handleOpenSettings}
+				{getCachedBlobUrl}
+			/>
 		{:else if currentStep === 'indexing' || currentStep === 'grouping'}
-			<!-- Processing Screen -->
-			<div class="px-2.5 py-5 text-center">
-				<div
-					class="mx-auto mb-8 h-16 w-16 animate-spin rounded-full border-4 border-gray-300 border-t-black"
-				></div>
-				<h2 class="mb-3 text-4xl font-black text-black">
-					{#if currentStep === 'indexing'}
-						🧠 Indexing your photos...
-					{:else}
-						🔍 Finding duplicates...
-					{/if}
-				</h2>
-				<p class="mb-10 text-lg font-medium text-brutalist-gray">
-					{#if $appStore.processingProgress.message}
-						{$appStore.processingProgress.message}
-					{:else}
-						This may take a few moments. We're using AI to compare your photos.
-					{/if}
-				</p>
-
-				<div class="mx-auto mb-8 grid max-w-lg grid-cols-2 gap-5">
-					<div class="shadow-brutalist-sm rounded-2xl border-4 border-black bg-pastel-pink-100 p-6">
-						<div class="mb-2 text-5xl font-black text-black">
-							{#if currentStep === 'grouping' && $appStore.processingProgress.isProcessing}
-								{$appStore.processingProgress.current}
-							{:else}
-								{$appStore.stats.totalPhotos}
-							{/if}
-						</div>
-						<div class="text-sm font-bold tracking-wide text-brutalist-gray uppercase">
-							{#if currentStep === 'indexing'}
-								Photos Scanned
-							{:else if currentStep === 'grouping'}
-								Photos Processed
-							{:else}
-								Photos Indexed
-							{/if}
-						</div>
-					</div>
-					<div
-						class="shadow-brutalist-sm rounded-2xl border-4 border-black bg-pastel-purple-100 p-6"
-					>
-						<div class="mb-2 text-5xl font-black text-black">
-							{#if $appStore.processingProgress.isProcessing}
-								{#if currentStep === 'grouping'}
-									{@const match = $appStore.processingProgress.message.match(/Found (\d+) groups/)}
-									{match ? match[1] : '0'}
-								{:else}
-									{$appStore.processingProgress.current}
-								{/if}
-							{:else if currentStep === 'indexing'}
-								{$appStore.stats.photosWithEmbeddings}
-							{:else}
-								{$appStore.stats.totalGroups}
-							{/if}
-						</div>
-						<div class="text-sm font-bold tracking-wide text-brutalist-gray uppercase">
-							{#if currentStep === 'indexing'}
-								Photos Analyzed
-							{:else}
-								Groups Found
-							{/if}
-						</div>
-					</div>
-				</div>
-
-				{#if $appStore.processingProgress.isProcessing && $appStore.processingProgress.total > 0}
-					<div class="mx-auto mt-8 max-w-2xl">
-						<div class="mb-3 flex items-center gap-3">
-							<span class="min-w-[60px] text-2xl font-black text-black">
-								{Math.floor(
-									($appStore.processingProgress.current / $appStore.processingProgress.total) * 100
-								)}%
-							</span>
-							<div class="h-4 flex-1 overflow-hidden rounded-md border-2 border-black bg-gray-200">
-								<div
-									class="h-full bg-linear-to-r from-pastel-pink-300 to-pastel-purple-300 transition-all duration-300"
-									style="width: {($appStore.processingProgress.current /
-										$appStore.processingProgress.total) *
-										100}%"
-								></div>
-							</div>
-						</div>
-						<div class="flex items-center justify-end">
-							{#if estimatedTimeRemaining > 0}
-								<span class="text-sm font-bold text-black">
-									~{formatTimeEstimate(estimatedTimeRemaining)} remaining
-								</span>
-							{/if}
-						</div>
-					</div>
-				{/if}
-
-				<div
-					class="shadow-brutalist-sm mt-12 inline-flex max-w-3xl items-center gap-2.5 rounded-2xl border-4 border-black bg-pastel-blue-100 px-6 py-4"
-				>
-					<span class="shrink-0 text-2xl">💡</span>
-					<span class="text-sm leading-relaxed font-semibold text-black"
-						>Keep this tab open for best performance. Processing continues and progress is saved.</span
-					>
-				</div>
-			</div>
+			<ProcessingScreen
+				{currentStep}
+				totalPhotos={$appStore.stats.totalPhotos}
+				photosWithEmbeddings={$appStore.stats.photosWithEmbeddings}
+				totalGroups={$appStore.stats.totalGroups}
+				processingProgress={$appStore.processingProgress}
+				{estimatedTimeRemaining}
+				{formatTimeEstimate}
+			/>
 		{:else if currentStep === 'reviewing'}
-			<!-- Review Screen -->
-			{#if displayGroups.length === 0 && ungroupedPhotos.length === 0}
-				<div class="px-5 py-20 text-center">
-					<div class="mb-6 text-8xl">✨</div>
-					<h2 class="mb-3 text-5xl font-black text-black">No duplicates found!</h2>
-					<p class="mb-8 text-xl font-medium text-brutalist-gray">Your photos are already clean.</p>
-					<div class="flex flex-wrap justify-center gap-3">
-						<button
-							onclick={handleRegroup}
-							class="shadow-brutalist hover:shadow-brutalist-lg rounded-xl border-4 border-black bg-pastel-purple-200 px-6 py-3 font-bold text-black transition-all hover:translate-x-[-2px] hover:translate-y-[-2px]"
-						>
-							🔄 Regroup
-						</button>
-						<button
-							onclick={handleReindex}
-							class="shadow-brutalist hover:shadow-brutalist-lg rounded-xl border-4 border-black bg-pastel-blue-200 px-6 py-3 font-bold text-black transition-all hover:translate-x-[-2px] hover:translate-y-[-2px]"
-						>
-							🔄 Reindex
-						</button>
-						<button
-							onclick={handleRescan}
-							class="shadow-brutalist hover:shadow-brutalist-lg rounded-xl border-4 border-black bg-pastel-pink-200 px-6 py-3 font-bold text-black transition-all hover:translate-x-[-2px] hover:translate-y-[-2px]"
-						>
-							⚠️ Rescan from Scratch
-						</button>
-					</div>
-				</div>
-			{:else}
-				<div>
-					{#if displayGroups.length > 0}
-						<div class="mb-8 flex items-start justify-between border-b-4 border-black pb-6">
-							<div class="flex flex-col gap-3">
-								<button
-									onclick={handleRegroup}
-									class="self-start rounded-lg border-2 border-black bg-gray-200 px-4 py-2 text-sm font-bold text-brutalist-gray transition-all hover:bg-gray-300"
-								>
-									← Regroup
-								</button>
-								<div>
-									<h2 class="mb-2 text-4xl font-black text-black">
-										Found {displayGroups.length} duplicate groups
-									</h2>
-									<p class="text-lg font-semibold text-brutalist-gray">
-										Click photos to mark for deletion
-									</p>
-								</div>
-							</div>
-							<div class="flex gap-3">
-								{#if $appStore.selectedPhotos.size > 0}
-									<button
-										onclick={handleClearSelection}
-										class="shadow-brutalist hover:shadow-brutalist-lg rounded-xl border-4 border-black bg-pastel-purple-200 px-6 py-3 font-bold whitespace-nowrap text-black transition-all hover:translate-x-[-2px] hover:translate-y-[-2px]"
-									>
-										Clear ({$appStore.selectedPhotos.size})
-									</button>
-									<button
-										onclick={handleDeleteFromGooglePhotos}
-										class="shadow-brutalist hover:shadow-brutalist-lg rounded-xl border-4 border-black bg-linear-to-br from-pastel-pink-200 to-pastel-pink-300 px-6 py-3 text-lg font-black whitespace-nowrap text-black transition-all hover:translate-x-[-2px] hover:translate-y-[-2px]"
-									>
-										📸 Delete from Google Photos
-									</button>
-								{/if}
-							</div>
-						</div>
-
-						<!-- Duplicate Groups -->
-						<div class="mb-12 flex flex-col gap-8">
-							{#each displayGroups as group (group.id)}
-								{#await getGroupPhotos(group)}
-									<div
-										class="shadow-brutalist flex min-h-[200px] items-center justify-center rounded-2xl border-4 border-black bg-pastel-pink-50 p-6"
-									>
-										<div
-											class="h-10 w-10 animate-spin rounded-full border-4 border-gray-300 border-t-black"
-										></div>
-									</div>
-								{:then photos}
-									<div
-										class="organic-texture cozy-card shadow-brutalist hover:shadow-brutalist-lg p-6 transition-all hover:border-black"
-									>
-										<div class="mb-5 flex items-center justify-between">
-											<h3 class="text-2xl font-black text-black">
-												Duplicate Group ({photos.length} photos)
-											</h3>
-											<button
-												onclick={() => selectAllInGroup(group.id)}
-												class="cursor-pointer border-none bg-none px-2 py-1 text-sm font-bold text-black hover:underline"
-											>
-												Select All
-											</button>
-										</div>
-										<div class="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
-											{#each photos as photo (photo.id)}
-												<button
-													class="relative aspect-square cursor-pointer overflow-hidden rounded-xl border-4 bg-none p-0 transition-all"
-													class:border-red-500={$appStore.selectedPhotos.has(photo.id)}
-													class:border-transparent={!$appStore.selectedPhotos.has(photo.id)}
-													class:shadow-brutalist-sm={!$appStore.selectedPhotos.has(photo.id)}
-													class:hover:scale-105={true}
-													class:hover:shadow-brutalist={true}
-													onclick={() => togglePhotoSelection(photo.id)}
-													type="button"
-												>
-													<img
-														src={getCachedBlobUrl(photo)}
-														alt="Duplicate"
-														loading="lazy"
-														class="h-full w-full object-cover"
-													/>
-													<div
-														class="absolute right-0 bottom-0 left-0 flex justify-center bg-linear-to-t from-black/70 to-transparent p-3"
-													>
-														{#if $appStore.selectedPhotos.has(photo.id)}
-															<div
-																class="rounded-full bg-red-500 px-3 py-1.5 text-xs font-black text-white"
-															>
-																✓ Will Delete
-															</div>
-														{:else}
-															<div
-																class="rounded-full bg-white/90 px-3 py-1.5 text-xs font-bold text-black"
-															>
-																Click to Select
-															</div>
-														{/if}
-													</div>
-												</button>
-											{/each}
-										</div>
-									</div>
-								{/await}
-							{/each}
-						</div>
-					{/if}
-
-					<!-- Ungrouped Photos -->
-					{#if ungroupedPhotos.length > 0}
-						<div class="mt-12 border-t-4 border-dashed border-black/20 pt-12">
-							<div class="mb-6">
-								<h2 class="mb-2 text-3xl font-black text-black">
-									📷 {ungroupedPhotos.length} Unique Photos
-								</h2>
-								<p class="text-lg font-semibold text-brutalist-gray">
-									These photos have no duplicates
-								</p>
-							</div>
-							<div class="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-4">
-								{#each ungroupedPhotos as photo (photo.id)}
-									<div
-										class="aspect-square overflow-hidden rounded-xl border-2 border-black bg-gray-100"
-									>
-										<img
-											src={getCachedBlobUrl(photo)}
-											alt="Unique"
-											loading="lazy"
-											class="h-full w-full object-cover"
-										/>
-									</div>
-								{/each}
-							</div>
-						</div>
-					{/if}
-				</div>
-			{/if}
+			<ReviewScreen
+				{displayGroups}
+				{ungroupedPhotos}
+				selectedPhotos={$appStore.selectedPhotos}
+				onToggleSelection={togglePhotoSelection}
+				onSelectAllInGroup={selectAllInGroup}
+				onClearSelection={handleClearSelection}
+				onDeleteFromGooglePhotos={handleDeleteFromGooglePhotos}
+				onRegroup={handleRegroup}
+				onReindex={handleReindex}
+				onRescan={handleRescan}
+				{getCachedBlobUrl}
+				{getGroupPhotos}
+			/>
 		{/if}
 	</main>
 </div>
 
 <!-- Settings Modal -->
-{#if showSettings}
-	<div
-		class="fixed top-0 left-0 z-1000 flex h-full w-full items-center justify-center bg-black/50 backdrop-blur-sm"
-		role="dialog"
-		aria-modal="true"
-		aria-labelledby="settings-title"
-		tabindex="-1"
-		onclick={(e) => {
-			if (e.target === e.currentTarget) {
-				showSettings = false;
-			}
-		}}
-		onkeydown={(e) => e.key === 'Escape' && (showSettings = false)}
-	>
-		<div
-			class="cozy-card shadow-brutalist-lg max-h-[90vh] w-[90%] max-w-2xl overflow-y-auto"
-			role="document"
-		>
-			<div class="flex items-center justify-between border-b-4 border-black p-6">
-				<h2 id="settings-title" class="text-3xl font-black text-black">⚙️ Settings</h2>
-				<button
-					class="h-8 w-8 cursor-pointer border-none bg-none p-0 text-5xl leading-none text-gray-400 transition-colors hover:text-gray-800"
-					onclick={() => (showSettings = false)}
-				>
-					&times;
-				</button>
-			</div>
-			<div class="p-6">
-				<div class="mb-8">
-					<label for="similarityThreshold" class="mb-3 flex flex-col gap-1">
-						<strong class="text-lg text-black">Match Sensitivity</strong>
-						<span class="text-sm font-medium text-brutalist-gray"
-							>How similar photos need to be</span
-						>
-					</label>
-					<div class="mb-2 flex items-center gap-3">
-						<span class="min-w-[50px] text-sm font-semibold text-brutalist-gray">Loose</span>
-						<input
-							type="range"
-							id="similarityThreshold"
-							bind:value={similaritySliderPosition}
-							min="0"
-							max="100"
-							step="1"
-							class="h-2 flex-1 appearance-none rounded-full border-2 border-black bg-gray-200 outline-none [&::-moz-range-thumb]:h-6 [&::-moz-range-thumb]:w-6 [&::-moz-range-thumb]:cursor-pointer [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-none [&::-moz-range-thumb]:border-white [&::-moz-range-thumb]:bg-black [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-white [&::-webkit-slider-thumb]:bg-black"
-						/>
-						<span class="min-w-[50px] text-sm font-semibold text-brutalist-gray">Strict</span>
-					</div>
-					<span class="mb-1 block text-sm font-bold text-black"
-						>{similaritySliderPosition}% match required</span
-					>
-					<span class="text-sm text-brutalist-gray"
-						>Lower values group more photos together (default: 70%)</span
-					>
-				</div>
-
-				<div class="mb-8">
-					<label for="timeWindow" class="mb-3 flex flex-col gap-1">
-						<strong class="text-lg text-black">Time Window</strong>
-						<span class="text-sm font-medium text-brutalist-gray"
-							>Photos taken within this time can be grouped</span
-						>
-					</label>
-					<input
-						type="number"
-						id="timeWindow"
-						bind:value={editingSettings.timeWindowMinutes}
-						min="5"
-						max="1440"
-						step="5"
-						class="mb-1 w-full rounded-xl border-4 border-black p-2.5 text-sm font-semibold focus:ring-4 focus:ring-pastel-purple-200 focus:outline-none"
-					/>
-					<span class="mb-1 block text-sm text-brutalist-gray">minutes</span>
-					<span class="text-sm text-brutalist-gray"
-						>Photos taken within this time window can be grouped (default: 60 minutes)</span
-					>
-				</div>
-
-				<div class="mb-0">
-					<label for="minGroupSize" class="mb-3 flex flex-col gap-1">
-						<strong class="text-lg text-black">Minimum Photos per Group</strong>
-						<span class="text-sm font-medium text-brutalist-gray"
-							>Only show groups with at least this many photos</span
-						>
-					</label>
-					<input
-						type="number"
-						id="minGroupSize"
-						bind:value={editingSettings.minGroupSize}
-						min="2"
-						max="10"
-						class="mb-1 w-full rounded-xl border-4 border-black p-2.5 text-sm font-semibold focus:ring-4 focus:ring-pastel-purple-200 focus:outline-none"
-					/>
-					<span class="text-sm text-brutalist-gray">photos</span>
-				</div>
-			</div>
-			<div class="flex justify-end gap-3 border-t-4 border-black p-6">
-				<button
-					class="shadow-brutalist hover:shadow-brutalist-lg rounded-xl border-4 border-black bg-pastel-purple-200 px-6 py-3 font-bold text-black transition-all hover:translate-x-[-2px] hover:translate-y-[-2px]"
-					onclick={() => (showSettings = false)}
-				>
-					Cancel
-				</button>
-				<button
-					class="shadow-brutalist hover:shadow-brutalist-lg rounded-xl border-4 border-black bg-linear-to-br from-pastel-pink-200 to-pastel-pink-300 px-6 py-3 font-black text-black transition-all hover:translate-x-[-2px] hover:translate-y-[-2px]"
-					onclick={handleSaveSettings}
-				>
-					Save
-				</button>
-			</div>
-		</div>
-	</div>
-{/if}
+<SettingsModal
+	{showSettings}
+	{editingSettings}
+	{similaritySliderPosition}
+	onClose={() => (showSettings = false)}
+	onSave={handleSaveSettings}
+	onSliderChange={(value) => {
+		similaritySliderPosition = value;
+		editingSettings.similarityThreshold = sliderPositionToThreshold(value);
+	}}
+/>
 
 <style>
-	/* Gentle bounce animation for welcome screen */
-	@keyframes gentle-bounce {
-		0%,
-		100% {
-			transform: translateY(0px) rotate(0deg);
-		}
-		25% {
-			transform: translateY(-8px) rotate(-2deg);
-		}
-		75% {
-			transform: translateY(-5px) rotate(2deg);
-		}
-	}
-
 	/* Responsive adjustments */
 	@media (max-width: 768px) {
 		.cozy-card {

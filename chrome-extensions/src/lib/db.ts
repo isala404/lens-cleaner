@@ -112,7 +112,8 @@ class LensDB {
 			mediaType: photo.mediaType || 'Photo',
 			dateTaken: photo.dateTaken || new Date().toISOString(),
 			fileName: photo.fileName,
-			timestamp: photo.timestamp || (photo.dateTaken ? new Date(photo.dateTaken).getTime() : Date.now()),
+			timestamp:
+				photo.timestamp || (photo.dateTaken ? new Date(photo.dateTaken).getTime() : Date.now()),
 			hasEmbedding: false,
 			groupId: null
 		};
@@ -140,7 +141,8 @@ class LensDB {
 				mediaType: photo.mediaType || 'Photo',
 				dateTaken: photo.dateTaken || new Date().toISOString(),
 				fileName: photo.fileName,
-				timestamp: photo.timestamp || (photo.dateTaken ? new Date(photo.dateTaken).getTime() : Date.now()),
+				timestamp:
+					photo.timestamp || (photo.dateTaken ? new Date(photo.dateTaken).getTime() : Date.now()),
 				hasEmbedding: false,
 				groupId: null
 			};
