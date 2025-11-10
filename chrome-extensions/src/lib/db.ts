@@ -4,7 +4,7 @@
  */
 
 const DB_NAME = 'LensCleanerDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 export interface Photo {
 	id: string;
@@ -15,6 +15,8 @@ export interface Photo {
 	timestamp: number;
 	hasEmbedding: boolean;
 	groupId: string | null;
+	aiSuggestionReason?: string;
+	aiSuggestionConfidence?: 'high' | 'medium' | 'low';
 }
 
 export interface Embedding {
@@ -59,6 +61,7 @@ class LensDB {
 
 			request.onupgradeneeded = (event) => {
 				const db = (event.target as IDBOpenDBRequest).result;
+				const oldVersion = event.oldVersion;
 
 				// Photos store
 				if (!db.objectStoreNames.contains('photos')) {
@@ -92,6 +95,13 @@ class LensDB {
 				// Metadata store (for tracking scan progress, stats, etc.)
 				if (!db.objectStoreNames.contains('metadata')) {
 					db.createObjectStore('metadata', { keyPath: 'key' });
+				}
+
+				// Auto-select jobs store (new in v2)
+				if (!db.objectStoreNames.contains('autoSelectJobs')) {
+					const jobsStore = db.createObjectStore('autoSelectJobs', { keyPath: 'jobId' });
+					jobsStore.createIndex('createdAt', 'createdAt', { unique: false });
+					jobsStore.createIndex('status', 'status', { unique: false });
 				}
 			};
 		});
@@ -639,11 +649,11 @@ class LensDB {
 		if (!this.db) throw new Error('Database not initialized');
 
 		const transaction = this.db.transaction(
-			['photos', 'embeddings', 'groups', 'metadata'],
+			['photos', 'embeddings', 'groups', 'metadata', 'autoSelectJobs'],
 			'readwrite'
 		);
 
-		const stores = ['photos', 'embeddings', 'groups', 'metadata'];
+		const stores = ['photos', 'embeddings', 'groups', 'metadata', 'autoSelectJobs'];
 
 		return Promise.all(
 			stores.map((storeName) => {
@@ -654,6 +664,103 @@ class LensDB {
 				});
 			})
 		).then(() => undefined);
+	}
+
+	/**
+	 * Save auto-select job
+	 */
+	async saveAutoSelectJob(job: {
+		jobId: string;
+		status: string;
+		email: string;
+		photoCount: number;
+		createdAt: string;
+	}): Promise<void> {
+		if (!this.db) throw new Error('Database not initialized');
+
+		const transaction = this.db.transaction(['autoSelectJobs'], 'readwrite');
+		const store = transaction.objectStore('autoSelectJobs');
+
+		return new Promise((resolve, reject) => {
+			const request = store.put(job);
+			request.onsuccess = () => resolve();
+			request.onerror = () => reject(request.error);
+		});
+	}
+
+	/**
+	 * Get auto-select job by ID
+	 */
+	async getAutoSelectJob(jobId: string): Promise<any> {
+		if (!this.db) throw new Error('Database not initialized');
+
+		const transaction = this.db.transaction(['autoSelectJobs'], 'readonly');
+		const store = transaction.objectStore('autoSelectJobs');
+
+		return new Promise((resolve, reject) => {
+			const request = store.get(jobId);
+			request.onsuccess = () => resolve(request.result);
+			request.onerror = () => reject(request.error);
+		});
+	}
+
+	/**
+	 * Update photo with AI suggestion
+	 */
+	async updatePhotoAISuggestion(
+		photoId: string,
+		reason: string,
+		confidence: 'high' | 'medium' | 'low'
+	): Promise<void> {
+		if (!this.db) throw new Error('Database not initialized');
+
+		const transaction = this.db.transaction(['photos'], 'readwrite');
+		const store = transaction.objectStore('photos');
+
+		return new Promise((resolve, reject) => {
+			const getRequest = store.get(photoId);
+
+			getRequest.onsuccess = () => {
+				const photo = getRequest.result;
+				if (photo) {
+					photo.aiSuggestionReason = reason;
+					photo.aiSuggestionConfidence = confidence;
+					const updateRequest = store.put(photo);
+					updateRequest.onsuccess = () => resolve();
+					updateRequest.onerror = () => reject(updateRequest.error);
+				} else {
+					resolve();
+				}
+			};
+
+			getRequest.onerror = () => reject(getRequest.error);
+		});
+	}
+
+	/**
+	 * Clear AI suggestions from all photos
+	 */
+	async clearAISuggestions(): Promise<void> {
+		if (!this.db) throw new Error('Database not initialized');
+
+		const transaction = this.db.transaction(['photos'], 'readwrite');
+		const photosStore = transaction.objectStore('photos');
+
+		const allPhotos = await new Promise<Photo[]>((resolve, reject) => {
+			const request = photosStore.getAll();
+			request.onsuccess = () => resolve(request.result);
+			request.onerror = () => reject(request.error);
+		});
+
+		for (const photo of allPhotos) {
+			photo.aiSuggestionReason = undefined;
+			photo.aiSuggestionConfidence = undefined;
+			await new Promise<void>((resolve, reject) => {
+				const request = photosStore.put(photo);
+				request.onsuccess = () => resolve();
+				request.onerror = () => reject(request.error);
+			});
+		}
 	}
 }
 
