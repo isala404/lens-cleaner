@@ -1,6 +1,6 @@
 <script lang="ts">
 	import './app.css';
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 
 	import {
@@ -38,7 +38,7 @@
 
 	// Local settings for editing (before save)
 	let editingSettings = {
-		similarityThreshold: 0.45, // Default to 45% (85% in UI)
+		similarityThreshold: 0.406, // Default to 40.6% (70% in UI)
 		timeWindowMinutes: 60,
 		minGroupSize: 2
 	};
@@ -52,11 +52,11 @@
 	function thresholdToSliderPosition(threshold: number): number {
 		// Map 0.2-0.45 to 0-85% slider position
 		if (threshold <= 0.45) {
-			return ((threshold - 0.2) / (0.45 - 0.2)) * 85;
+			return Math.round(((threshold - 0.2) / (0.45 - 0.2)) * 85);
 		}
 
 		// Map 0.45-0.7 to 85-100% slider position
-		return 85 + ((threshold - 0.45) / (0.7 - 0.45)) * 15;
+		return Math.round(85 + ((threshold - 0.45) / (0.7 - 0.45)) * 15);
 	}
 
 	// Convert UI slider position (0-100) to backend threshold (0.2-0.7)
@@ -73,14 +73,6 @@
 	// Cache for group photos to avoid re-fetching
 	let groupPhotosCache = new SvelteMap<string, Photo[]>();
 	let ungroupedPhotos: Photo[] = [];
-
-	// Sorted photos for preview screen (most recent first)
-	$: sortedPhotos = [...$appStore.photos].sort((a, b) => {
-		const dateA = a.dateTaken ? new Date(a.dateTaken).getTime() : a.timestamp;
-		const dateB = b.dateTaken ? new Date(b.dateTaken).getTime() : b.timestamp;
-
-		return dateB - dateA; // Most recent first
-	});
 
 	onMount(async () => {
 		await initializeApp();
@@ -310,16 +302,11 @@
 			return groupPhotosCache.get(group.id)!;
 		}
 
+		// Get photos in the order specified by group.photoIds
+		// Note: We intentionally avoid client-side sorting for large datasets (1M+ photos)
+		// The database returns photos already sorted; we just fetch them in their order
 		const photos = await Promise.all(group.photoIds.map((id) => db.getPhoto(id)));
 		const validPhotos = photos.filter((p) => p !== undefined) as Photo[];
-
-		// Sort photos by dateTaken (most recent first)
-		validPhotos.sort((a, b) => {
-			const dateA = a.dateTaken ? new Date(a.dateTaken).getTime() : a.timestamp;
-			const dateB = b.dateTaken ? new Date(b.dateTaken).getTime() : b.timestamp;
-
-			return dateB - dateA; // Most recent first
-		});
 
 		// Cache the result
 		groupPhotosCache.set(group.id, validPhotos);
@@ -339,14 +326,6 @@
 
 			// Filter photos that are NOT in any group
 			ungroupedPhotos = allPhotos.filter((photo) => !groupedPhotoIds.has(photo.id));
-
-			// Sort ungrouped photos by dateTaken (most recent first)
-			ungroupedPhotos.sort((a, b) => {
-				const dateA = a.dateTaken ? new Date(a.dateTaken).getTime() : a.timestamp;
-				const dateB = b.dateTaken ? new Date(b.dateTaken).getTime() : b.timestamp;
-
-				return dateB - dateA; // Most recent first
-			});
 		} catch (error) {
 			console.error('Error loading ungrouped photos:', error);
 			ungroupedPhotos = [];
@@ -390,6 +369,24 @@
 
 	// Filter groups by minimum size
 	$: displayGroups = $filteredGroups.filter((g) => g.photoIds.length >= settings.minGroupSize);
+
+	// Track blob URLs for cleanup
+	let blobUrlCache = new SvelteMap<string, string>();
+
+	function getCachedBlobUrl(photo: Photo): string {
+		if (blobUrlCache.has(photo.id)) {
+			return blobUrlCache.get(photo.id)!;
+		}
+		const url = URL.createObjectURL(photo.blob);
+		blobUrlCache.set(photo.id, url);
+		return url;
+	}
+
+	// Cleanup blob URLs when component is destroyed
+	onDestroy(() => {
+		blobUrlCache.forEach((url) => URL.revokeObjectURL(url));
+		blobUrlCache.clear();
+	});
 </script>
 
 <div class="mx-auto max-w-7xl px-5 py-8">
@@ -593,10 +590,10 @@
 				</div>
 
 				<div class="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-4">
-					{#each sortedPhotos as photo (photo.id)}
+					{#each $appStore.photos as photo (photo.id)}
 						<div class="aspect-square overflow-hidden rounded-xl border-2 border-black bg-gray-100">
 							<img
-								src="data:image/jpeg;base64,{photo.base64}"
+								src={getCachedBlobUrl(photo)}
 								alt="Scanned"
 								loading="lazy"
 								class="h-full w-full object-cover"
@@ -642,10 +639,10 @@
 				</div>
 
 				<div class="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-4">
-					{#each sortedPhotos as photo (photo.id)}
+					{#each $appStore.photos as photo (photo.id)}
 						<div class="aspect-square overflow-hidden rounded-xl border-2 border-black bg-gray-100">
 							<img
-								src="data:image/jpeg;base64,{photo.base64}"
+								src={getCachedBlobUrl(photo)}
 								alt="Indexed"
 								loading="lazy"
 								class="h-full w-full object-cover"
@@ -862,7 +859,7 @@
 													type="button"
 												>
 													<img
-														src="data:image/jpeg;base64,{photo.base64}"
+														src={getCachedBlobUrl(photo)}
 														alt="Duplicate"
 														loading="lazy"
 														class="h-full w-full object-cover"
@@ -910,7 +907,7 @@
 										class="aspect-square overflow-hidden rounded-xl border-2 border-black bg-gray-100"
 									>
 										<img
-											src="data:image/jpeg;base64,{photo.base64}"
+											src={getCachedBlobUrl(photo)}
 											alt="Unique"
 											loading="lazy"
 											class="h-full w-full object-cover"

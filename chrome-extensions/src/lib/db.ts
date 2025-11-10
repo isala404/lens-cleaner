@@ -8,7 +8,7 @@ const DB_VERSION = 1;
 
 export interface Photo {
 	id: string;
-	base64: string;
+	blob: Blob;
 	mediaType: string;
 	dateTaken: string;
 	fileName?: string;
@@ -64,8 +64,18 @@ class LensDB {
 				if (!db.objectStoreNames.contains('photos')) {
 					const photosStore = db.createObjectStore('photos', { keyPath: 'id' });
 					photosStore.createIndex('timestamp', 'timestamp', { unique: false });
+					photosStore.createIndex('dateTaken', 'dateTaken', { unique: false });
 					photosStore.createIndex('hasEmbedding', 'hasEmbedding', { unique: false });
 					photosStore.createIndex('groupId', 'groupId', { unique: false });
+				} else {
+					// Add dateTaken index if it doesn't exist (for existing databases)
+					const transaction = (event.target as IDBOpenDBRequest).transaction;
+					if (transaction) {
+						const photosStore = transaction.objectStore('photos');
+						if (!photosStore.indexNames.contains('dateTaken')) {
+							photosStore.createIndex('dateTaken', 'dateTaken', { unique: false });
+						}
+					}
 				}
 
 				// Embeddings store (separate for better performance)
@@ -90,7 +100,7 @@ class LensDB {
 	/**
 	 * Add a photo to the database
 	 */
-	async addPhoto(photo: Partial<Photo> & { id: string; base64: string }): Promise<Photo> {
+	async addPhoto(photo: Partial<Photo> & { id: string; blob: Blob }): Promise<Photo> {
 		if (!this.db) throw new Error('Database not initialized');
 
 		const transaction = this.db.transaction(['photos'], 'readwrite');
@@ -98,11 +108,11 @@ class LensDB {
 
 		const photoData: Photo = {
 			id: photo.id,
-			base64: photo.base64,
+			blob: photo.blob,
 			mediaType: photo.mediaType || 'Photo',
 			dateTaken: photo.dateTaken || new Date().toISOString(),
 			fileName: photo.fileName,
-			timestamp: Date.now(),
+			timestamp: photo.timestamp || (photo.dateTaken ? new Date(photo.dateTaken).getTime() : Date.now()),
 			hasEmbedding: false,
 			groupId: null
 		};
@@ -117,9 +127,7 @@ class LensDB {
 	/**
 	 * Bulk add photos (more efficient)
 	 */
-	async addPhotos(
-		photos: Array<Partial<Photo> & { id: string; base64: string }>
-	): Promise<Photo[]> {
+	async addPhotos(photos: Array<Partial<Photo> & { id: string; blob: Blob }>): Promise<Photo[]> {
 		if (!this.db) throw new Error('Database not initialized');
 
 		const transaction = this.db.transaction(['photos'], 'readwrite');
@@ -128,11 +136,11 @@ class LensDB {
 		const promises = photos.map((photo) => {
 			const photoData: Photo = {
 				id: photo.id,
-				base64: photo.base64,
+				blob: photo.blob,
 				mediaType: photo.mediaType || 'Photo',
 				dateTaken: photo.dateTaken || new Date().toISOString(),
 				fileName: photo.fileName,
-				timestamp: Date.now(),
+				timestamp: photo.timestamp || (photo.dateTaken ? new Date(photo.dateTaken).getTime() : Date.now()),
 				hasEmbedding: false,
 				groupId: null
 			};
@@ -164,7 +172,8 @@ class LensDB {
 	}
 
 	/**
-	 * Get all photos
+	 * Get all photos, sorted by timestamp (newest first)
+	 * Using timestamp (number) instead of dateTaken (string) ensures correct chronological ordering
 	 */
 	async getAllPhotos(): Promise<Photo[]> {
 		if (!this.db) throw new Error('Database not initialized');
@@ -173,14 +182,29 @@ class LensDB {
 		const store = transaction.objectStore('photos');
 
 		return new Promise((resolve, reject) => {
-			const request = store.getAll();
-			request.onsuccess = () => resolve(request.result);
+			const results: Photo[] = [];
+			// Use timestamp index (numeric) instead of dateTaken (string) for reliable sorting
+			const index = store.index('timestamp');
+			const request = index.openCursor(null, 'prev'); // 'prev' = descending order (newest first)
+
+			request.onsuccess = (event) => {
+				const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
+				if (cursor) {
+					results.push(cursor.value);
+					cursor.continue();
+				} else {
+					resolve(results);
+				}
+			};
+
 			request.onerror = () => reject(request.error);
 		});
 	}
 
 	/**
-	 * Get photos without embeddings (for processing)
+	 * Get photos without embeddings (for processing), sorted by timestamp (oldest first)
+	 * Note: Processing uses oldest first to maintain consistent order with processing queue
+	 * Using timestamp (number) instead of dateTaken (string) ensures correct chronological ordering
 	 */
 	async getPhotosWithoutEmbeddings(limit: number = 100): Promise<Photo[]> {
 		if (!this.db) throw new Error('Database not initialized');
@@ -190,7 +214,10 @@ class LensDB {
 
 		return new Promise((resolve, reject) => {
 			const results: Photo[] = [];
-			const request = store.openCursor();
+			// Use timestamp index (numeric) instead of dateTaken (string) for reliable sorting
+			// Keep 'next' (ascending) for processing to maintain consistent queue order
+			const index = store.index('timestamp');
+			const request = index.openCursor(null, 'next'); // 'next' = ascending order (oldest first for processing)
 
 			request.onsuccess = (event) => {
 				const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
@@ -198,7 +225,11 @@ class LensDB {
 					if (!cursor.value.hasEmbedding && results.length < limit) {
 						results.push(cursor.value);
 					}
-					cursor.continue();
+					if (results.length < limit) {
+						cursor.continue();
+					} else {
+						resolve(results);
+					}
 				} else {
 					resolve(results);
 				}

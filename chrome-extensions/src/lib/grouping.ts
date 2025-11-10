@@ -58,9 +58,11 @@ export class GroupingProcessor {
 		console.log(`Similarity threshold: ${similarityThreshold}`);
 		console.log(`Time window: ${timeWindowMinutes} minutes`);
 
-		// Sort photos by date taken
+		// Sort photos by timestamp (numeric field) for reliable chronological ordering (oldest first)
+		// Note: Database returns newest first, so we need to reverse for grouping algorithm
+		// This ensures photos in time windows are contiguous in the sorted array
 		const sortedPhotos = [...photos].sort((a, b) => {
-			return new Date(a.dateTaken).getTime() - new Date(b.dateTaken).getTime();
+			return a.timestamp - b.timestamp;
 		});
 
 		const groups: PhotoGroup[] = [];
@@ -108,8 +110,8 @@ export class GroupingProcessor {
 					{ id: photo1.id, embedding: embedding1 }
 				];
 
-				// Parse photo1 time for comparison
-				const photo1Time = new Date(photo1.dateTaken).getTime();
+				// Use timestamp field directly (already in milliseconds since epoch)
+				const photo1Time = photo1.timestamp;
 
 				// Look ahead for similar photos within time window
 				// Search in remaining photos from current position onwards
@@ -121,8 +123,8 @@ export class GroupingProcessor {
 						continue;
 					}
 
-					// Parse photo2 time
-					const photo2Time = new Date(photo2.dateTaken).getTime();
+					// Use timestamp field directly (already in milliseconds since epoch)
+					const photo2Time = photo2.timestamp;
 
 					// Check time window - use the configured time window in seconds
 					const timeDiffSeconds = Math.abs(photo2Time - photo1Time) / 1000;
@@ -229,9 +231,11 @@ export class GroupingProcessor {
 		console.log(`Similarity threshold: ${similarityThreshold}`);
 		console.log(`Time window: ${timeWindowMinutes} minutes`);
 
-		// Sort photos by date taken
+		// Sort photos by timestamp (numeric field) for reliable chronological ordering (oldest first)
+		// Note: Database returns newest first, so we need to reverse for grouping algorithm
+		// This ensures photos in time windows are contiguous in the sorted array
 		const sortedPhotos = [...photos].sort((a, b) => {
-			return new Date(a.dateTaken).getTime() - new Date(b.dateTaken).getTime();
+			return a.timestamp - b.timestamp;
 		});
 
 		const groups: PhotoGroup[] = [];
@@ -270,8 +274,8 @@ export class GroupingProcessor {
 				{ id: photo1.id, embedding: embedding1 }
 			];
 
-			// Parse photo1 time for comparison
-			const photo1Time = new Date(photo1.dateTaken).getTime();
+			// Use timestamp field directly (already in milliseconds since epoch)
+			const photo1Time = photo1.timestamp;
 
 			// Look ahead for similar photos within time window
 			for (let j = i + 1; j < sortedPhotos.length; j++) {
@@ -282,8 +286,8 @@ export class GroupingProcessor {
 					continue;
 				}
 
-				// Parse photo2 time
-				const photo2Time = new Date(photo2.dateTaken).getTime();
+				// Use timestamp field directly (already in milliseconds since epoch)
+				const photo2Time = photo2.timestamp;
 
 				// Check time window - use the configured time window in seconds
 				const timeDiffSeconds = Math.abs(photo2Time - photo1Time) / 1000;

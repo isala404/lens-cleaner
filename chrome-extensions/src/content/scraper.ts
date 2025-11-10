@@ -236,23 +236,23 @@ async function extractPhotoData(linkElement: HTMLElement, processedIds: Set<stri
 			return null;
 		}
 
-		// Fetch the image and convert to base64
-		const base64 = await fetchImageAsBase64(imageUrl);
+		// Fetch the image as blob
+		const blob = await fetchImageAsBlob(imageUrl);
 
-		if (!base64) {
+		if (!blob) {
 			return null;
 		}
 
-		return {
+		const photo: Photo = {
 			id: photoId,
-			base64: base64,
+			blob: blob,
 			mediaType: metadata.mediaType,
 			dateTaken: metadata.dateTaken,
-			googlePhotosUrl: photoUrl,
 			timestamp: metadata.dateTaken ? new Date(metadata.dateTaken).getTime() : Date.now(),
 			hasEmbedding: false,
 			groupId: null
 		};
+		return photo;
 	} catch (error) {
 		console.error('Error extracting photo data:', error);
 		return null;
@@ -283,6 +283,8 @@ function parseAriaLabel(ariaLabel: string) {
 		const dateObject = new Date(dateString);
 		if (!isNaN(dateObject.getTime())) {
 			dateTaken = dateObject.toISOString();
+		} else {
+			console.warn(`Failed to parse date with time: "${dateString}" from aria-label: "${ariaLabel}"`);
 		}
 	} else {
 		dateMatch = ariaLabel.match(/(\w{3} \d{1,2}, \d{4})/);
@@ -290,7 +292,11 @@ function parseAriaLabel(ariaLabel: string) {
 			const dateObject = new Date(dateMatch[1]);
 			if (!isNaN(dateObject.getTime())) {
 				dateTaken = dateObject.toISOString();
+			} else {
+				console.warn(`Failed to parse date: "${dateMatch[1]}" from aria-label: "${ariaLabel}"`);
 			}
+		} else {
+			console.warn(`No date found in aria-label: "${ariaLabel}"`);
 		}
 	}
 
@@ -298,9 +304,9 @@ function parseAriaLabel(ariaLabel: string) {
 }
 
 /**
- * Fetch image and convert to base64
+ * Fetch image as blob
  */
-async function fetchImageAsBase64(imageUrl: string): Promise<string | null> {
+async function fetchImageAsBlob(imageUrl: string): Promise<Blob | null> {
 	try {
 		// Request a smaller size for efficiency (400x400)
 		const optimizedUrl = imageUrl.replace(/=[ws]\d+.*/, '=w400-h400-no');
@@ -314,8 +320,7 @@ async function fetchImageAsBase64(imageUrl: string): Promise<string | null> {
 			return null;
 		}
 
-		const blob = await response.blob();
-		return await blobToBase64(blob);
+		return await response.blob();
 	} catch (error) {
 		console.error('Error fetching image:', error);
 		return null;
@@ -323,30 +328,34 @@ async function fetchImageAsBase64(imageUrl: string): Promise<string | null> {
 }
 
 /**
- * Convert blob to base64
- */
-function blobToBase64(blob: Blob): Promise<string> {
-	return new Promise((resolve, reject) => {
-		const reader = new FileReader();
-		reader.onload = () => {
-			// Remove the data:image/...;base64, prefix
-			const base64 = (reader.result as string).split(',')[1];
-			resolve(base64);
-		};
-		reader.onerror = reject;
-		reader.readAsDataURL(blob);
-	});
-}
-
-/**
  * Send batch of photos to service worker
+ * Converts Blobs to ArrayBuffers for transmission, then reconstructs them in service worker
  */
 async function sendBatchToServiceWorker(photos: Photo[]) {
+	// Convert blobs to ArrayBuffers for transmission
+	const photosWithArrayBuffers = await Promise.all(
+		photos.map(async (photo) => {
+			const blob = photo.blob;
+			const arrayBuffer = await blob.arrayBuffer();
+			const blobType = blob.type;
+			const blobSize = blob.size;
+			return {
+				...photo,
+				blob: null, // Remove blob (will be reconstructed in service worker)
+				blobData: {
+					arrayBuffer: Array.from(new Uint8Array(arrayBuffer)), // Convert to regular array for JSON serialization
+					type: blobType,
+					size: blobSize
+				}
+			};
+		})
+	);
+
 	return new Promise((resolve, reject) => {
 		chrome.runtime.sendMessage(
 			{
 				action: 'storePhotos',
-				photos: photos
+				photos: photosWithArrayBuffers
 			},
 			(response) => {
 				if (chrome.runtime.lastError) {

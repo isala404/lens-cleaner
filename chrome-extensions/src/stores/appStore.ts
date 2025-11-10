@@ -49,7 +49,7 @@ const defaultState: AppState = {
 	},
 	selectedPhotos: new Set(),
 	settings: {
-		similarityThreshold: 0.45, // Default to 45% (85% in UI)
+		similarityThreshold: 0.406, // Default to 40.6% (70% in UI)
 		timeWindowMinutes: 60,
 		maxPhotos: 1000
 	},
@@ -147,10 +147,7 @@ export async function initializeApp() {
 					processingProgress: savedProgress
 				}));
 				console.log('Resuming interrupted embedding process...');
-			} else if (
-				savedProgress.type === 'grouping' &&
-				stats.photosWithEmbeddings > 0
-			) {
+			} else if (savedProgress.type === 'grouping' && stats.photosWithEmbeddings > 0) {
 				// Resume grouping (even if groups exist, we'll clear them before resuming)
 				appStore.update((s) => ({
 					...s,
@@ -276,7 +273,12 @@ export async function calculateEmbeddings() {
 		let processed = currentProcessed;
 		for (const photo of photos) {
 			try {
-				const embedding = await embeddingsProcessor.calculateEmbedding(photo.base64);
+				// Convert blob to data URL for embedding calculation
+				const dataUrl = await blobToDataUrl(photo.blob);
+				// Remove data:image/...;base64, prefix to get just the base64 string
+				const base64 = dataUrl.split(',')[1];
+
+				const embedding = await embeddingsProcessor.calculateEmbedding(base64);
 				await db.addEmbedding(photo.id, embedding);
 				processed++;
 
@@ -372,7 +374,7 @@ export async function groupPhotos() {
 			groupingProcessor = new GroupingProcessor();
 		}
 
-		// Get all photos with embeddings
+		// Get all photos with embeddings (already sorted by dateTaken from database)
 		const photos = await db.getAllPhotos();
 		const photosWithEmbeddings = photos.filter((p) => p.hasEmbedding);
 
@@ -434,11 +436,6 @@ export async function groupPhotos() {
 		// Get all embeddings
 		const embeddings = await db.getAllEmbeddings();
 		const embeddingMap = new Map(embeddings.map((e) => [e.photoId, e.embedding]));
-
-		// Track groups found so far (for resuming)
-		let totalGroupsFound = 0;
-		const existingGroups = await db.getAllGroups();
-		totalGroupsFound = existingGroups.length;
 
 		// Group photos with progress callback
 		const groups = await groupingProcessor.groupSimilarPhotosBatched(
@@ -668,23 +665,21 @@ export function setMinGroupSize(size: number) {
 	appStore.update((state) => ({ ...state, minGroupSize: size }));
 }
 
+/**
+ * Convert blob to data URL
+ */
+function blobToDataUrl(blob: Blob): Promise<string> {
+	return new Promise((resolve, reject) => {
+		const reader = new FileReader();
+		reader.onload = () => resolve(reader.result as string);
+		reader.onerror = reject;
+		reader.readAsDataURL(blob);
+	});
+}
+
 // Derived stores
 export const filteredGroups = derived(appStore, ($appStore) => {
 	const filtered = $appStore.groups.filter((g) => g.photoIds.length >= $appStore.minGroupSize);
-
-	// Sort groups
-	filtered.sort((a, b) => {
-		switch ($appStore.sortBy) {
-			case 'similarity':
-				return (b.similarityScore || 0) - (a.similarityScore || 0);
-			case 'size':
-				return b.photoIds.length - a.photoIds.length;
-			case 'date':
-				return b.timestamp - a.timestamp;
-			default:
-				return 0;
-		}
-	});
 
 	return filtered;
 });

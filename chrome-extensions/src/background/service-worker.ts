@@ -124,12 +124,37 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 /**
  * Store photos in IndexedDB
+ * Reconstructs Blobs from ArrayBuffer data received from content script
  */
-async function handleStorePhotos(photos: Photo[]) {
+interface PhotoWithBlobData extends Omit<Photo, 'blob'> {
+	blob: null;
+	blobData: {
+		arrayBuffer: number[];
+		type: string;
+		size: number;
+	};
+}
+
+async function handleStorePhotos(photos: PhotoWithBlobData[]) {
 	console.log(`Storing ${photos.length} photos...`);
 
 	try {
-		await db.addPhotos(photos);
+		// Reconstruct Blobs from ArrayBuffer data
+		const photosWithBlobs: Photo[] = photos.map((photo) => {
+			if (photo.blobData) {
+				// Reconstruct blob from ArrayBuffer data
+				const uint8Array = new Uint8Array(photo.blobData.arrayBuffer);
+				const blob = new Blob([uint8Array], { type: photo.blobData.type });
+				return {
+					...photo,
+					blob: blob
+				} as Photo;
+			}
+			// If blob already exists (shouldn't happen, but handle gracefully)
+			return photo as unknown as Photo;
+		});
+
+		await db.addPhotos(photosWithBlobs);
 		console.log(`Successfully stored ${photos.length} photos`);
 
 		// Update metadata
@@ -200,8 +225,13 @@ async function handleStartEmbeddings(options: { batchSize?: number } = {}) {
 
 			for (const photo of batch) {
 				try {
+					// Convert blob to data URL for embedding calculation
+					const dataUrl = await blobToDataUrl(photo.blob);
+					// Remove data:image/...;base64, prefix to get just the base64 string
+					const base64 = dataUrl.split(',')[1];
+
 					// Calculate embedding
-					const embedding = await embeddingsProcessor.calculateEmbedding(photo.base64);
+					const embedding = await embeddingsProcessor.calculateEmbedding(base64);
 
 					// Store embedding
 					await db.addEmbedding(photo.id, embedding);
@@ -429,6 +459,18 @@ async function handleInitiateDeletion(tabId: number, photoIds: string[]) {
 		console.error('🗑️ Error in handleInitiateDeletion:', error);
 		throw error;
 	}
+}
+
+/**
+ * Convert blob to data URL
+ */
+function blobToDataUrl(blob: Blob): Promise<string> {
+	return new Promise((resolve, reject) => {
+		const reader = new FileReader();
+		reader.onload = () => resolve(reader.result as string);
+		reader.onerror = reject;
+		reader.readAsDataURL(blob);
+	});
 }
 
 console.log('Service worker loaded');
