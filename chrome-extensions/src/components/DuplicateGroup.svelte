@@ -4,7 +4,6 @@
 
 	export let group: Group;
 	export let photos: Photo[];
-	export let selectedPhotos: Set<string>;
 	export let onToggleSelection: (photoId: string) => void;
 	export let onSelectAllInGroup: (groupId: string) => void;
 	export let getCachedBlobUrl: (photo: Photo) => string;
@@ -24,5 +23,5 @@
 			Select All
 		</button>
 	</div>
-	<PhotoGrid {photos} {getCachedBlobUrl} selectable={true} {selectedPhotos} {onToggleSelection} />
+	<PhotoGrid {photos} {getCachedBlobUrl} selectable={true} {onToggleSelection} />
 </div>

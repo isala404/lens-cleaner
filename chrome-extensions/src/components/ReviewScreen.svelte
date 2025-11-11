@@ -2,10 +2,12 @@
 	import type { Photo, Group } from '../lib/db';
 	import PhotoGrid from './PhotoGrid.svelte';
 	import DuplicateGroup from './DuplicateGroup.svelte';
+	import PaymentModal from './PaymentModal.svelte';
+	import AutoSelectProcessingBanner from './AutoSelectProcessingBanner.svelte';
 
 	export let displayGroups: Group[];
 	export let ungroupedPhotos: Photo[];
-	export let selectedPhotos: Set<string>;
+	export let selectedCount: number;
 	export let onToggleSelection: (photoId: string) => void;
 	export let onSelectAllInGroup: (groupId: string) => void;
 	export let onClearSelection: () => void;
@@ -15,6 +17,39 @@
 	export let onRescan: () => void;
 	export let getCachedBlobUrl: (photo: Photo) => string;
 	export let getGroupPhotos: (group: Group) => Promise<Photo[]>;
+
+	// Auto-select props
+	export let autoSelectStatus:
+		| 'idle'
+		| 'payment'
+		| 'ready'
+		| 'uploading'
+		| 'processing'
+		| 'completed'
+		| 'failed' = 'idle';
+	export let autoSelectProgress: number = 0;
+	export let autoSelectError: string = '';
+	export let onAutoSelect: () => void;
+	export let onCheckoutCreated: (checkoutUrl: string, jobId: string) => void;
+	export let onStartUpload: () => void;
+	export let totalPhotosCount: number = 0;
+	export let canRetryAutoSelect: boolean = false;
+	export let canRefundAutoSelect: boolean = false;
+	export let onRetryAutoSelect: () => void = () => {};
+	export let onRefundAutoSelect: () => void = () => {};
+	export let refundLoading: boolean = false;
+
+	let showPaymentModal = false;
+
+	function handleAutoSelect() {
+		showPaymentModal = true;
+		onAutoSelect();
+	}
+
+	function handleCheckoutCreated(checkoutUrl: string, jobId: string) {
+		showPaymentModal = false;
+		onCheckoutCreated(checkoutUrl, jobId);
+	}
 </script>
 
 {#if displayGroups.length === 0 && ungroupedPhotos.length === 0}
@@ -45,12 +80,39 @@
 	</div>
 {:else}
 	<div>
+		<!-- Auto-select Processing Banner -->
+		{#if autoSelectStatus === 'uploading'}
+			<AutoSelectProcessingBanner
+				status="uploading"
+				uploadProgress={autoSelectProgress}
+				message=""
+			/>
+		{:else if autoSelectStatus === 'processing'}
+			<AutoSelectProcessingBanner status="processing" uploadProgress={0} message="" />
+		{:else if autoSelectStatus === 'completed'}
+			<AutoSelectProcessingBanner status="completed" uploadProgress={100} message="" />
+		{:else if autoSelectStatus === 'failed'}
+			<AutoSelectProcessingBanner
+				status="failed"
+				uploadProgress={0}
+				message={autoSelectError}
+				canRetry={canRetryAutoSelect}
+				onRetry={onRetryAutoSelect}
+				canRefund={canRefundAutoSelect}
+				onRefund={onRefundAutoSelect}
+				{refundLoading}
+			/>
+		{/if}
+
 		{#if displayGroups.length > 0}
 			<div class="mb-8 flex items-start justify-between border-b-4 border-black pb-6">
 				<div class="flex flex-col gap-3">
 					<button
 						onclick={onRegroup}
 						class="self-start rounded-lg border-2 border-black bg-gray-200 px-4 py-2 text-sm font-bold text-brutalist-gray transition-all hover:bg-gray-300"
+						disabled={autoSelectStatus === 'processing' ||
+							autoSelectStatus === 'uploading' ||
+							autoSelectStatus === 'ready'}
 					>
 						← Regroup
 					</button>
@@ -63,17 +125,39 @@
 						</p>
 					</div>
 				</div>
-				<div class="flex gap-3">
-					{#if selectedPhotos.size > 0}
+				<div class="flex flex-wrap gap-3">
+					<!-- Auto-select button (shown when idle) -->
+					{#if autoSelectStatus === 'idle' && selectedCount === 0}
+						<button
+							onclick={handleAutoSelect}
+							class="shadow-brutalist hover:shadow-brutalist-lg rounded-xl border-4 border-black bg-gradient-to-r from-purple-500 to-pink-500 px-6 py-3 text-lg font-black whitespace-nowrap text-white transition-all hover:translate-x-[-2px] hover:translate-y-[-2px]"
+						>
+							🤖 Auto Select
+						</button>
+					{/if}
+
+					<!-- Start Upload button (shown when ready) -->
+					{#if autoSelectStatus === 'ready'}
+						<button
+							onclick={onStartUpload}
+							class="shadow-brutalist hover:shadow-brutalist-lg rounded-xl border-4 border-black bg-gradient-to-r from-green-500 to-emerald-500 px-6 py-3 text-lg font-black whitespace-nowrap text-white transition-all hover:translate-x-[-2px] hover:translate-y-[-2px]"
+						>
+							⬆️ Start Upload
+						</button>
+					{/if}
+
+					{#if selectedCount > 0}
 						<button
 							onclick={onClearSelection}
 							class="shadow-brutalist hover:shadow-brutalist-lg rounded-xl border-4 border-black bg-pastel-purple-200 px-6 py-3 font-bold whitespace-nowrap text-black transition-all hover:translate-x-[-2px] hover:translate-y-[-2px]"
+							disabled={autoSelectStatus === 'uploading'}
 						>
-							Clear ({selectedPhotos.size})
+							Clear ({selectedCount})
 						</button>
 						<button
 							onclick={onDeleteFromGooglePhotos}
 							class="shadow-brutalist hover:shadow-brutalist-lg rounded-xl border-4 border-black bg-linear-to-br from-pastel-pink-200 to-pastel-pink-300 px-6 py-3 text-lg font-black whitespace-nowrap text-black transition-all hover:translate-x-[-2px] hover:translate-y-[-2px]"
+							disabled={autoSelectStatus === 'uploading'}
 						>
 							📸 Delete from Google Photos
 						</button>
@@ -96,7 +180,6 @@
 						<DuplicateGroup
 							{group}
 							{photos}
-							{selectedPhotos}
 							{onToggleSelection}
 							{onSelectAllInGroup}
 							{getCachedBlobUrl}
@@ -120,3 +203,11 @@
 		{/if}
 	</div>
 {/if}
+
+<!-- Payment Modal -->
+<PaymentModal
+	show={showPaymentModal}
+	photoCount={totalPhotosCount}
+	onClose={() => (showPaymentModal = false)}
+	onCheckoutCreated={handleCheckoutCreated}
+/>

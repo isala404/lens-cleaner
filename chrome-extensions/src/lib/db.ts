@@ -4,7 +4,7 @@
  */
 
 const DB_NAME = 'LensCleanerDB';
-const DB_VERSION = 1;
+const DB_VERSION = 3;
 
 export interface Photo {
 	id: string;
@@ -15,6 +15,9 @@ export interface Photo {
 	timestamp: number;
 	hasEmbedding: boolean;
 	groupId: string | null;
+	aiSuggestionReason?: string;
+	aiSuggestionConfidence?: 'high' | 'medium' | 'low';
+	googlePhotosUrl?: string;
 }
 
 export interface Embedding {
@@ -93,7 +96,20 @@ class LensDB {
 				if (!db.objectStoreNames.contains('metadata')) {
 					db.createObjectStore('metadata', { keyPath: 'key' });
 				}
-			};
+
+			// Auto-select jobs store (new in v2)
+			if (!db.objectStoreNames.contains('autoSelectJobs')) {
+				const jobsStore = db.createObjectStore('autoSelectJobs', { keyPath: 'jobId' });
+				jobsStore.createIndex('createdAt', 'createdAt', { unique: false });
+				jobsStore.createIndex('status', 'status', { unique: false });
+			}
+
+			// Selection state store (new in v3) - for scalable photo selection
+			if (!db.objectStoreNames.contains('selectedPhotos')) {
+				const selectedStore = db.createObjectStore('selectedPhotos', { keyPath: 'photoId' });
+				selectedStore.createIndex('selectedAt', 'selectedAt', { unique: false });
+			}
+		};
 		});
 	}
 
@@ -639,11 +655,11 @@ class LensDB {
 		if (!this.db) throw new Error('Database not initialized');
 
 		const transaction = this.db.transaction(
-			['photos', 'embeddings', 'groups', 'metadata'],
+			['photos', 'embeddings', 'groups', 'metadata', 'autoSelectJobs', 'selectedPhotos'],
 			'readwrite'
 		);
 
-		const stores = ['photos', 'embeddings', 'groups', 'metadata'];
+		const stores = ['photos', 'embeddings', 'groups', 'metadata', 'autoSelectJobs', 'selectedPhotos'];
 
 		return Promise.all(
 			stores.map((storeName) => {
@@ -654,6 +670,289 @@ class LensDB {
 				});
 			})
 		).then(() => undefined);
+	}
+
+	/**
+	 * Save auto-select job
+	 */
+	async saveAutoSelectJob(job: {
+		jobId: string;
+		status: string;
+		email: string;
+		photoCount: number;
+		createdAt: string;
+	}): Promise<void> {
+		if (!this.db) throw new Error('Database not initialized');
+
+		const transaction = this.db.transaction(['autoSelectJobs'], 'readwrite');
+		const store = transaction.objectStore('autoSelectJobs');
+
+		return new Promise((resolve, reject) => {
+			const request = store.put(job);
+			request.onsuccess = () => resolve();
+			request.onerror = () => reject(request.error);
+		});
+	}
+
+	/**
+	 * Get auto-select job by ID
+	 */
+	async getAutoSelectJob(jobId: string): Promise<
+		| {
+				jobId: string;
+				status: string;
+				email: string;
+				photoCount: number;
+				createdAt: string;
+		  }
+		| undefined
+	> {
+		if (!this.db) throw new Error('Database not initialized');
+
+		const transaction = this.db.transaction(['autoSelectJobs'], 'readonly');
+		const store = transaction.objectStore('autoSelectJobs');
+
+		return new Promise((resolve, reject) => {
+			const request = store.get(jobId);
+			request.onsuccess = () => resolve(request.result);
+			request.onerror = () => reject(request.error);
+		});
+	}
+
+	/**
+	 * Update photo with AI suggestion
+	 */
+	async updatePhotoAISuggestion(
+		photoId: string,
+		reason: string,
+		confidence: 'high' | 'medium' | 'low'
+	): Promise<void> {
+		if (!this.db) throw new Error('Database not initialized');
+
+		const transaction = this.db.transaction(['photos'], 'readwrite');
+		const store = transaction.objectStore('photos');
+
+		return new Promise((resolve, reject) => {
+			const getRequest = store.get(photoId);
+
+			getRequest.onsuccess = () => {
+				const photo = getRequest.result;
+				if (photo) {
+					photo.aiSuggestionReason = reason;
+					photo.aiSuggestionConfidence = confidence;
+					const updateRequest = store.put(photo);
+					updateRequest.onsuccess = () => resolve();
+					updateRequest.onerror = () => reject(updateRequest.error);
+				} else {
+					resolve();
+				}
+			};
+
+			getRequest.onerror = () => reject(getRequest.error);
+		});
+	}
+
+	/**
+	 * Clear AI suggestions from all photos
+	 */
+	async clearAISuggestions(): Promise<void> {
+		if (!this.db) throw new Error('Database not initialized');
+
+		const transaction = this.db.transaction(['photos'], 'readwrite');
+		const photosStore = transaction.objectStore('photos');
+
+		const allPhotos = await new Promise<Photo[]>((resolve, reject) => {
+			const request = photosStore.getAll();
+			request.onsuccess = () => resolve(request.result);
+			request.onerror = () => reject(request.error);
+		});
+
+		for (const photo of allPhotos) {
+			photo.aiSuggestionReason = undefined;
+			photo.aiSuggestionConfidence = undefined;
+			await new Promise<void>((resolve, reject) => {
+				const request = photosStore.put(photo);
+				request.onsuccess = () => resolve();
+				request.onerror = () => reject(request.error);
+			});
+		}
+	}
+
+	// ===== SELECTION MANAGEMENT =====
+	// Methods for managing photo selection state in IndexedDB
+	// This allows scalable selection of millions of photos without memory constraints
+
+	/**
+	 * Mark a photo as selected
+	 */
+	async selectPhoto(photoId: string): Promise<void> {
+		if (!this.db) throw new Error('Database not initialized');
+
+		const transaction = this.db.transaction(['selectedPhotos'], 'readwrite');
+		const store = transaction.objectStore('selectedPhotos');
+
+		return new Promise((resolve, reject) => {
+			const request = store.put({ photoId, selectedAt: Date.now() });
+			request.onsuccess = () => resolve();
+			request.onerror = () => reject(request.error);
+		});
+	}
+
+	/**
+	 * Mark a photo as unselected
+	 */
+	async unselectPhoto(photoId: string): Promise<void> {
+		if (!this.db) throw new Error('Database not initialized');
+
+		const transaction = this.db.transaction(['selectedPhotos'], 'readwrite');
+		const store = transaction.objectStore('selectedPhotos');
+
+		return new Promise((resolve, reject) => {
+			const request = store.delete(photoId);
+			request.onsuccess = () => resolve();
+			request.onerror = () => reject(request.error);
+		});
+	}
+
+	/**
+	 * Check if a photo is selected
+	 */
+	async isPhotoSelected(photoId: string): Promise<boolean> {
+		if (!this.db) throw new Error('Database not initialized');
+
+		const transaction = this.db.transaction(['selectedPhotos'], 'readonly');
+		const store = transaction.objectStore('selectedPhotos');
+
+		return new Promise((resolve, reject) => {
+			const request = store.get(photoId);
+			request.onsuccess = () => resolve(request.result !== undefined);
+			request.onerror = () => reject(request.error);
+		});
+	}
+
+	/**
+	 * Get the total count of selected photos
+	 */
+	async getSelectedPhotosCount(): Promise<number> {
+		if (!this.db) throw new Error('Database not initialized');
+
+		const transaction = this.db.transaction(['selectedPhotos'], 'readonly');
+		const store = transaction.objectStore('selectedPhotos');
+
+		return new Promise((resolve, reject) => {
+			const request = store.count();
+			request.onsuccess = () => resolve(request.result);
+			request.onerror = () => reject(request.error);
+		});
+	}
+
+	/**
+	 * Get a batch of selected photo IDs
+	 * @param offset - Number of records to skip
+	 * @param limit - Maximum number of records to return
+	 */
+	async getSelectedPhotosBatch(offset: number = 0, limit: number = 1000): Promise<string[]> {
+		if (!this.db) throw new Error('Database not initialized');
+
+		const transaction = this.db.transaction(['selectedPhotos'], 'readonly');
+		const store = transaction.objectStore('selectedPhotos');
+
+		return new Promise((resolve, reject) => {
+			const photoIds: string[] = [];
+			let skipped = 0;
+			const request = store.openCursor();
+
+			request.onsuccess = (event) => {
+				const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
+				if (cursor) {
+					// Skip until we reach the offset
+					if (skipped < offset) {
+						skipped++;
+						cursor.continue();
+						return;
+					}
+
+					// Collect photo IDs until we reach the limit
+					if (photoIds.length < limit) {
+						photoIds.push(cursor.value.photoId);
+						cursor.continue();
+					} else {
+						resolve(photoIds);
+					}
+				} else {
+					// No more records
+					resolve(photoIds);
+				}
+			};
+
+			request.onerror = () => reject(request.error);
+		});
+	}
+
+	/**
+	 * Get all selected photo IDs
+	 * WARNING: This loads all IDs into memory. Use getSelectedPhotosBatch() for large selections.
+	 */
+	async getAllSelectedPhotos(): Promise<string[]> {
+		if (!this.db) throw new Error('Database not initialized');
+
+		const transaction = this.db.transaction(['selectedPhotos'], 'readonly');
+		const store = transaction.objectStore('selectedPhotos');
+
+		return new Promise((resolve, reject) => {
+			const request = store.getAll();
+			request.onsuccess = () => {
+				const results = request.result.map((record: { photoId: string }) => record.photoId);
+				resolve(results);
+			};
+			request.onerror = () => reject(request.error);
+		});
+	}
+
+	/**
+	 * Clear all selected photos
+	 */
+	async clearSelectedPhotos(): Promise<void> {
+		if (!this.db) throw new Error('Database not initialized');
+
+		const transaction = this.db.transaction(['selectedPhotos'], 'readwrite');
+		const store = transaction.objectStore('selectedPhotos');
+
+		return new Promise((resolve, reject) => {
+			const request = store.clear();
+			request.onsuccess = () => resolve();
+			request.onerror = () => reject(request.error);
+		});
+	}
+
+	/**
+	 * Iterate through all selected photos in batches and call a callback for each batch
+	 * This is useful for processing large selections without loading all IDs into memory
+	 * @param batchSize - Number of photo IDs to process per batch
+	 * @param callback - Function to call for each batch of photo IDs
+	 */
+	async forEachSelectedPhotoBatch(
+		callback: (photoIds: string[], batchIndex: number) => Promise<void>,
+		batchSize: number = 1000
+	): Promise<void> {
+		let offset = 0;
+		let batchIndex = 0;
+
+		while (true) {
+			const batch = await this.getSelectedPhotosBatch(offset, batchSize);
+			if (batch.length === 0) {
+				break;
+			}
+
+			await callback(batch, batchIndex);
+			offset += batch.length;
+			batchIndex++;
+
+			// If we got fewer results than the batch size, we've reached the end
+			if (batch.length < batchSize) {
+				break;
+			}
+		}
 	}
 }
 

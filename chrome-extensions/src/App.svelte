@@ -19,6 +19,13 @@
 	} from './stores/appStore';
 
 	import db, { type Group, type Photo } from './lib/db';
+	import { uploadPhotos, startProcessing, getJobStatus, refundJob } from './lib/api';
+	import {
+		preparePhotosForAutoSelect,
+		pollJobStatus,
+		retryJobStatus,
+		applyAISuggestions
+	} from './lib/autoSelect';
 
 	// Components
 	import Header from './components/Header.svelte';
@@ -29,6 +36,8 @@
 	import ProcessingScreen from './components/ProcessingScreen.svelte';
 	import ReviewScreen from './components/ReviewScreen.svelte';
 	import SettingsModal from './components/SettingsModal.svelte';
+	import RegroupWarningModal from './components/RegroupWarningModal.svelte';
+	import ClearWarningModal from './components/ClearWarningModal.svelte';
 
 	let currentStep: 'welcome' | 'preview' | 'indexing' | 'indexed' | 'grouping' | 'reviewing' =
 		'welcome';
@@ -39,12 +48,74 @@
 	let processingStartProgress = 0; // Track progress at start for accurate time estimates
 	let estimatedTimeRemaining = 0;
 
+	// Auto-select state
+	let autoSelectStatus:
+		| 'idle'
+		| 'payment'
+		| 'ready'
+		| 'uploading'
+		| 'processing'
+		| 'completed'
+		| 'failed' = 'idle';
+	let autoSelectProgress = 0;
+	let autoSelectError = '';
+	let autoSelectJobId: string | null = null;
+	let showRegroupWarning = false;
+	let showClearWarning = false;
+	let canRetryAutoSelect = false;
+	let canRefundAutoSelect = false;
+	let refundLoading = false;
+
 	// Settings - reactive to appStore
 	$: settings = {
 		similarityThreshold: $appStore.settings.similarityThreshold,
 		timeWindowMinutes: $appStore.settings.timeWindowMinutes,
 		minGroupSize: $appStore.minGroupSize
 	};
+
+	// Save auto-select state to localStorage
+	function saveAutoSelectState() {
+		if (autoSelectJobId) {
+			localStorage.setItem(
+				'autoSelectState',
+				JSON.stringify({
+					jobId: autoSelectJobId,
+					status: autoSelectStatus,
+					error: autoSelectError,
+					canRetry: canRetryAutoSelect,
+					canRefund: canRefundAutoSelect,
+					timestamp: Date.now()
+				})
+			);
+		}
+	}
+
+	// Restore auto-select state from localStorage
+	function restoreAutoSelectState() {
+		try {
+			const saved = localStorage.getItem('autoSelectState');
+			if (saved) {
+				const state = JSON.parse(saved);
+				// Check if state is recent (within last 24 hours)
+				const age = Date.now() - state.timestamp;
+				if (age > 86400000) {
+					// 24 hours
+					localStorage.removeItem('autoSelectState');
+					return null;
+				}
+				return state;
+			}
+		} catch {
+			return null;
+		}
+		return null;
+	}
+
+	// Clear auto-select state
+	function clearAutoSelectState() {
+		localStorage.removeItem('autoSelectState');
+		localStorage.removeItem('autoSelectJobId');
+	}
 
 	// Local settings for editing (before save)
 	let editingSettings = {
@@ -130,6 +201,54 @@
 		} else {
 			determineCurrentStep();
 		}
+
+		// Check for payment redirect (job_id in URL)
+		const urlParams = new URLSearchParams(window.location.search);
+		const jobId = urlParams.get('job_id');
+		const paymentStatus = urlParams.get('payment');
+
+		if (jobId && paymentStatus === 'success') {
+			// Save job ID and set ready status
+			autoSelectJobId = jobId;
+			localStorage.setItem('autoSelectJobId', jobId);
+			await db.saveAutoSelectJob({
+				jobId,
+				status: 'created',
+				email: '',
+				photoCount: $appStore.stats.totalPhotos,
+				createdAt: new Date().toISOString()
+			});
+
+			// Clear URL parameters
+			window.history.replaceState({}, document.title, window.location.pathname);
+
+			// Set status to ready - user must click button to start upload
+			autoSelectStatus = 'ready';
+			saveAutoSelectState();
+		} else {
+			// Check if there's a saved auto-select state
+			const savedState = restoreAutoSelectState();
+			if (savedState) {
+				autoSelectJobId = savedState.jobId;
+				autoSelectStatus = savedState.status;
+				autoSelectError = savedState.error;
+				canRetryAutoSelect = savedState.canRetry;
+				canRefundAutoSelect = savedState.canRefund;
+
+				// Check job status if it's not a failed state
+				if (autoSelectStatus !== 'failed') {
+					await checkAutoSelectJobStatus(savedState.jobId);
+				}
+			} else {
+				// Check for legacy saved job ID
+				const savedJobId = localStorage.getItem('autoSelectJobId');
+				if (savedJobId) {
+					autoSelectJobId = savedJobId;
+					// Check job status
+					await checkAutoSelectJobStatus(savedJobId);
+				}
+			}
+		}
 	});
 
 	function determineCurrentStep() {
@@ -192,23 +311,43 @@
 	}
 
 	function handleClearSelection() {
-		if ($appStore.selectedPhotos.size === 0) {
+		if ($appStore.selectedPhotosCount === 0) {
 			return;
 		}
 
-		if (confirm(`Clear selection of ${$appStore.selectedPhotos.size} photo(s)?`)) {
-			clearSelection();
-		}
+		showClearWarning = true;
+	}
+
+	async function handleClearConfirmed() {
+		showClearWarning = false;
+
+		// Clear AI suggestions and auto-select state
+		await db.clearAISuggestions();
+		clearAutoSelectState();
+
+		// Reset auto-select status to idle
+		autoSelectStatus = 'idle';
+		autoSelectProgress = 0;
+		autoSelectError = '';
+		autoSelectJobId = null;
+
+		// Clear AI-related caches
+		groupPhotosCache.clear();
+		blobUrlCache.forEach((url) => URL.revokeObjectURL(url));
+		blobUrlCache.clear();
+
+		// Clear the selection
+		clearSelection();
 	}
 
 	async function handleDeleteFromGooglePhotos() {
-		if ($appStore.selectedPhotos.size === 0) {
+		if ($appStore.selectedPhotosCount === 0) {
 			return;
 		}
 
 		if (
 			confirm(
-				`Create an album with ${$appStore.selectedPhotos.size} photo(s) in Google Photos for deletion?\n\nThis will:\n1. Open a new tab to Google Photos Albums\n2. Create an album with selected photos\n3. You can then review and delete them from the album`
+				`Create an album with ${$appStore.selectedPhotosCount} photo(s) in Google Photos for deletion?\n\nThis will:\n1. Open a new tab to Google Photos Albums\n2. Create an album with selected photos\n3. You can then review and delete them from the album`
 			)
 		) {
 			try {
@@ -239,23 +378,264 @@
 		}
 	}
 
+	// Auto-select handlers
+	function handleAutoSelect() {
+		// Just open modal, handled in ReviewScreen
+	}
+
+	async function handleCheckoutCreated(checkoutUrl: string, jobId: string) {
+		// Store job ID for when payment completes
+		// Note: PaymentModal will handle navigation to checkout page
+		autoSelectJobId = jobId;
+		localStorage.setItem('autoSelectJobId', jobId);
+	}
+
+	async function handleAutoSelectUpload() {
+		try {
+			autoSelectStatus = 'uploading';
+			autoSelectProgress = 0;
+			saveAutoSelectState();
+
+			// Get all photos with embeddings
+			const photos = await db.getAllPhotos();
+			const photosWithEmbeddings = photos.filter((p) => p.hasEmbedding);
+
+			if (photosWithEmbeddings.length === 0) {
+				throw new Error('No photos to upload');
+			}
+
+			if (!autoSelectJobId) {
+				throw new Error('No job ID found');
+			}
+
+			// Prepare photos (convert blobs to files)
+			const { files, photoMetadata } = await preparePhotosForAutoSelect(photosWithEmbeddings);
+
+			// Upload files with atomic requests (5 concurrent)
+			await uploadPhotos(autoSelectJobId, files, (uploaded, total) => {
+				// Map upload progress to 0-80% range
+				autoSelectProgress = Math.round((uploaded / total) * 80);
+			});
+
+			autoSelectProgress = 85;
+
+			// Start processing
+			await startProcessing(autoSelectJobId, photoMetadata);
+			autoSelectProgress = 100;
+
+			// Start polling
+			autoSelectStatus = 'processing';
+			saveAutoSelectState();
+			await pollJobStatus(
+				autoSelectJobId,
+				(status) => {
+					console.log('Job status:', status);
+				},
+				async (results) => {
+					// Apply AI suggestions
+					await applyAISuggestions(results.deletions);
+
+					// Select photos with AI suggestions
+					const photosToSelect = results.deletions.map((d) => d.photo_id);
+					photosToSelect.forEach((id) => togglePhotoSelection(id));
+
+					autoSelectStatus = 'completed';
+					localStorage.removeItem('autoSelectJobId');
+					await refreshData();
+				},
+				(error, canRetry) => {
+					autoSelectStatus = 'failed';
+					autoSelectError = error;
+					canRetryAutoSelect = canRetry;
+					canRefundAutoSelect = canRetry; // Allow refund if retry is available
+					saveAutoSelectState();
+				}
+			);
+		} catch (error) {
+			autoSelectStatus = 'failed';
+			autoSelectError = error instanceof Error ? error.message : 'Upload failed';
+			saveAutoSelectState();
+		}
+	}
+
+	async function checkAutoSelectJobStatus(jobId: string) {
+		try {
+			const response = await getJobStatus(jobId);
+
+			if (response.status === 'processing') {
+				autoSelectStatus = 'processing';
+				saveAutoSelectState();
+				// Start polling
+				await pollJobStatus(
+					jobId,
+					(status) => {
+						console.log('Job status:', status);
+					},
+					async (results) => {
+						await applyAISuggestions(results.deletions);
+
+						const photosToSelect = results.deletions.map((d) => d.photo_id);
+						photosToSelect.forEach((id) => togglePhotoSelection(id));
+
+						autoSelectStatus = 'completed';
+						clearAutoSelectState();
+						await refreshData();
+					},
+					(error, canRetry) => {
+						autoSelectStatus = 'failed';
+						autoSelectError = error;
+						canRetryAutoSelect = canRetry;
+						canRefundAutoSelect = canRetry; // Allow refund if retry is available
+						saveAutoSelectState();
+					}
+				);
+			} else if (response.status === 'completed' && response.results) {
+				await applyAISuggestions(response.results.deletions);
+
+				const photosToSelect = response.results.deletions.map((d) => d.photo_id);
+				photosToSelect.forEach((id) => togglePhotoSelection(id));
+
+				autoSelectStatus = 'completed';
+				clearAutoSelectState();
+				await refreshData();
+			} else if (response.status === 'failed') {
+				autoSelectStatus = 'failed';
+				autoSelectError = 'Processing failed';
+				canRetryAutoSelect = true;
+				canRefundAutoSelect = true;
+				saveAutoSelectState();
+			}
+		} catch (error) {
+			console.error('Error checking job status:', error);
+			// If we get an error checking status, set failed state with retry option
+			autoSelectStatus = 'failed';
+			autoSelectError = error instanceof Error ? error.message : 'Failed to check job status';
+			canRetryAutoSelect = true;
+			canRefundAutoSelect = true;
+			saveAutoSelectState();
+		}
+	}
+
+	async function handleRetryAutoSelect() {
+		if (!autoSelectJobId) return;
+
+		try {
+			autoSelectStatus = 'processing';
+			canRetryAutoSelect = false;
+			canRefundAutoSelect = false;
+			saveAutoSelectState();
+
+			// Get photos and recreate photoMetadata for retry
+			const photos = await db.getAllPhotos();
+			const photosWithEmbeddings = photos.filter((p) => p.hasEmbedding);
+			const { photoMetadata } = await preparePhotosForAutoSelect(photosWithEmbeddings);
+
+			await retryJobStatus(
+				autoSelectJobId,
+				photoMetadata,
+				(status) => {
+					console.log('Job status:', status);
+				},
+				async (results) => {
+					await applyAISuggestions(results.deletions);
+
+					const photosToSelect = results.deletions.map((d) => d.photo_id);
+					photosToSelect.forEach((id) => togglePhotoSelection(id));
+
+					autoSelectStatus = 'completed';
+					clearAutoSelectState();
+					await refreshData();
+				},
+				(error, canRetry) => {
+					autoSelectStatus = 'failed';
+					autoSelectError = error;
+					canRetryAutoSelect = canRetry;
+					canRefundAutoSelect = canRetry;
+					saveAutoSelectState();
+				}
+			);
+		} catch (error) {
+			autoSelectStatus = 'failed';
+			autoSelectError = error instanceof Error ? error.message : 'Retry failed';
+			canRetryAutoSelect = true;
+			canRefundAutoSelect = true;
+			saveAutoSelectState();
+		}
+	}
+
+	async function handleRefundAutoSelect() {
+		if (!autoSelectJobId) return;
+
+		try {
+			refundLoading = true;
+			const refundResponse = await refundJob(autoSelectJobId);
+
+			if (refundResponse.success) {
+				autoSelectStatus = 'idle';
+				autoSelectError = '';
+				canRetryAutoSelect = false;
+				canRefundAutoSelect = false;
+				clearAutoSelectState();
+				autoSelectJobId = null;
+				alert(`Refund processed successfully! ${refundResponse.message}`);
+			} else {
+				autoSelectError = refundResponse.message;
+				saveAutoSelectState();
+			}
+		} catch (error) {
+			autoSelectError = error instanceof Error ? error.message : 'Refund failed';
+			saveAutoSelectState();
+		} finally {
+			refundLoading = false;
+		}
+	}
+
 	async function handleRegroup() {
+		// Check if there are AI suggestions
+		const photos = await db.getAllPhotos();
+		const photosWithAI = photos.filter((p) => p.aiSuggestionReason);
+
+		if (photosWithAI.length > 0) {
+			// Show warning modal
+			showRegroupWarning = true;
+			return;
+		}
+
 		if (
 			confirm(
 				'This will clear all duplicate groups. You can adjust settings and regroup. Your indexed photos will be kept. Continue?'
 			)
 		) {
-			try {
-				// Only clear groups, keep embeddings
-				await db.clearGroups();
-				groupPhotosCache.clear();
-				ungroupedPhotos = [];
-				await refreshData();
-				currentStep = 'indexed';
-			} catch (error) {
-				alert('Error regrouping: ' + error);
-			}
+			await performRegroup();
 		}
+	}
+
+	async function performRegroup() {
+		try {
+			// Clear AI suggestions and auto-select state
+			await db.clearAISuggestions();
+			localStorage.removeItem('autoSelectJobId');
+			autoSelectJobId = null;
+			autoSelectStatus = 'idle';
+
+			// Clear AI-related caches
+			groupPhotosCache.clear();
+			blobUrlCache.forEach((url) => URL.revokeObjectURL(url));
+			blobUrlCache.clear();
+
+			// Only clear groups, keep embeddings
+			await db.clearGroups();
+			ungroupedPhotos = [];
+			await refreshData();
+			currentStep = 'indexed';
+		} catch (error) {
+			alert('Error regrouping: ' + error);
+		}
+	}
+
+	async function handleRegroupConfirmed() {
+		showRegroupWarning = false;
+		await performRegroup();
 	}
 
 	async function handleRescan() {
@@ -440,7 +820,7 @@
 			<ReviewScreen
 				{displayGroups}
 				{ungroupedPhotos}
-				selectedPhotos={$appStore.selectedPhotos}
+				selectedCount={$appStore.selectedPhotosCount}
 				onToggleSelection={togglePhotoSelection}
 				onSelectAllInGroup={selectAllInGroup}
 				onClearSelection={handleClearSelection}
@@ -450,6 +830,18 @@
 				onRescan={handleRescan}
 				{getCachedBlobUrl}
 				{getGroupPhotos}
+				{autoSelectStatus}
+				{autoSelectProgress}
+				{autoSelectError}
+				onAutoSelect={handleAutoSelect}
+				onCheckoutCreated={handleCheckoutCreated}
+				onStartUpload={handleAutoSelectUpload}
+				totalPhotosCount={$appStore.stats.photosWithEmbeddings}
+				{canRetryAutoSelect}
+				{canRefundAutoSelect}
+				onRetryAutoSelect={handleRetryAutoSelect}
+				onRefundAutoSelect={handleRefundAutoSelect}
+				{refundLoading}
 			/>
 		{/if}
 	</main>
@@ -466,6 +858,21 @@
 		similaritySliderPosition = value;
 		editingSettings.similarityThreshold = sliderPositionToThreshold(value);
 	}}
+/>
+
+<!-- Regroup Warning Modal -->
+<RegroupWarningModal
+	show={showRegroupWarning}
+	onClose={() => (showRegroupWarning = false)}
+	onConfirm={handleRegroupConfirmed}
+/>
+
+<!-- Clear Warning Modal -->
+<ClearWarningModal
+	show={showClearWarning}
+	selectedCount={$appStore.selectedPhotosCount}
+	onClose={() => (showClearWarning = false)}
+	onConfirm={handleClearConfirmed}
 />
 
 <style>

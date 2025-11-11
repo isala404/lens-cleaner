@@ -250,7 +250,8 @@ async function extractPhotoData(linkElement: HTMLElement, processedIds: Set<stri
 			dateTaken: metadata.dateTaken,
 			timestamp: metadata.dateTaken ? new Date(metadata.dateTaken).getTime() : Date.now(),
 			hasEmbedding: false,
-			groupId: null
+			groupId: null,
+			googlePhotosUrl: photoUrl
 		};
 		return photo;
 	} catch (error) {

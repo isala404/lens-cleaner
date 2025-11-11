@@ -29,7 +29,7 @@ interface AppState {
 	photos: Photo[];
 	groups: Group[];
 	stats: Stats;
-	selectedPhotos: Set<string>;
+	selectedPhotosCount: number; // Now just a count, actual IDs stored in IndexedDB
 	settings: Settings;
 	processingProgress: ProcessingProgress;
 	viewMode: 'groups' | 'all';
@@ -47,7 +47,7 @@ const defaultState: AppState = {
 		totalGroups: 0,
 		photosInGroups: 0
 	},
-	selectedPhotos: new Set(),
+	selectedPhotosCount: 0,
 	settings: {
 		similarityThreshold: 0.406, // Default to 40.6% (70% in UI)
 		timeWindowMinutes: 60,
@@ -133,6 +133,13 @@ export async function initializeApp() {
 			appStore.update((state) => ({ ...state, settings }));
 		}
 
+		// Update selection count from IndexedDB
+		const selectedCount = await db.getSelectedPhotosCount();
+		appStore.update((state) => ({ ...state, selectedPhotosCount: selectedCount }));
+
+		// Auto-select photos with AI suggestions
+		await autoSelectAISuggestedPhotos();
+
 		// Check for interrupted processing
 		const savedProgress = getSavedProcessingState();
 		if (savedProgress) {
@@ -172,12 +179,34 @@ export async function refreshData() {
 		const groups = await db.getAllGroups();
 		const photos = await db.getAllPhotos();
 
-		appStore.update((state) => ({
-			...state,
-			stats,
-			groups,
-			photos
-		}));
+		// Update selection count from IndexedDB
+		const selectedCount = await db.getSelectedPhotosCount();
+
+		// Check if there are AI-suggested photos and auto-select them
+		const aiSuggestedPhotos = photos.filter((p) => p.aiSuggestionReason);
+		if (aiSuggestedPhotos.length > 0) {
+			// Add AI suggestions to IndexedDB selection
+			for (const photo of aiSuggestedPhotos) {
+				await db.selectPhoto(photo.id);
+			}
+			// Update count after adding AI suggestions
+			const newSelectedCount = await db.getSelectedPhotosCount();
+			appStore.update((state) => ({
+				...state,
+				stats,
+				groups,
+				photos,
+				selectedPhotosCount: newSelectedCount
+			}));
+		} else {
+			appStore.update((state) => ({
+				...state,
+				stats,
+				groups,
+				photos,
+				selectedPhotosCount: selectedCount
+			}));
+		}
 	} catch (error) {
 		console.error('Error refreshing data:', error);
 		throw error;
@@ -523,7 +552,7 @@ export async function clearAllData() {
 			...s,
 			photos: [],
 			groups: [],
-			selectedPhotos: new Set(),
+			selectedPhotosCount: 0,
 			stats: {
 				totalPhotos: 0,
 				photosWithEmbeddings: 0,
@@ -546,8 +575,8 @@ export async function clearAllData() {
 
 // Delete selected photos from local database
 export async function deleteSelectedPhotos() {
-	const state = get(appStore);
-	const photoIds = Array.from(state.selectedPhotos);
+	// Get photo IDs from IndexedDB in batches
+	const photoIds = await db.getAllSelectedPhotos();
 
 	if (photoIds.length === 0) {
 		return;
@@ -555,9 +584,10 @@ export async function deleteSelectedPhotos() {
 
 	try {
 		await db.deletePhotos(photoIds);
+		await db.clearSelectedPhotos();
 		appStore.update((s) => ({
 			...s,
-			selectedPhotos: new Set()
+			selectedPhotosCount: 0
 		}));
 		await refreshData();
 	} catch (error) {
@@ -568,10 +598,9 @@ export async function deleteSelectedPhotos() {
 
 // Delete selected photos from Google Photos
 export async function deleteFromGooglePhotos() {
-	const state = get(appStore);
-	const photoIds = Array.from(state.selectedPhotos);
+	const selectedCount = await db.getSelectedPhotosCount();
 
-	if (photoIds.length === 0) {
+	if (selectedCount === 0) {
 		return;
 	}
 
@@ -585,10 +614,10 @@ export async function deleteFromGooglePhotos() {
 		// Wait for tab to be created
 		if (tab.id) {
 			// Send message to service worker to initiate deletion workflow
+			// NOTE: We don't pass photoIds anymore - service worker will fetch them from IndexedDB
 			await chrome.runtime.sendMessage({
 				action: 'initiateDeletion',
-				tabId: tab.id,
-				photoIds: photoIds
+				tabId: tab.id
 			});
 		}
 	} catch (error) {
@@ -608,36 +637,60 @@ export async function deleteGroup(groupId: string) {
 	}
 }
 
-// Toggle photo selection
-export function togglePhotoSelection(photoId: string) {
-	appStore.update((state) => {
-		const newSelected = new Set(state.selectedPhotos);
-		if (newSelected.has(photoId)) {
-			newSelected.delete(photoId);
-		} else {
-			newSelected.add(photoId);
+// Check if a photo is selected (helper for UI components)
+export async function isPhotoSelected(photoId: string): Promise<boolean> {
+	return await db.isPhotoSelected(photoId);
+}
+
+// Auto-select photos with AI suggestions
+async function autoSelectAISuggestedPhotos() {
+	const photos = await db.getAllPhotos();
+	const aiSuggestedPhotos = photos.filter((p) => p.aiSuggestionReason);
+
+	if (aiSuggestedPhotos.length > 0) {
+		for (const photo of aiSuggestedPhotos) {
+			await db.selectPhoto(photo.id);
 		}
-		return { ...state, selectedPhotos: newSelected };
-	});
+		const selectedCount = await db.getSelectedPhotosCount();
+		appStore.update((state) => ({ ...state, selectedPhotosCount: selectedCount }));
+		console.log(`Auto-selected ${aiSuggestedPhotos.length} AI-suggested photos`);
+	}
+}
+
+// Toggle photo selection
+export async function togglePhotoSelection(photoId: string) {
+	const isSelected = await db.isPhotoSelected(photoId);
+	
+	if (isSelected) {
+		await db.unselectPhoto(photoId);
+	} else {
+		await db.selectPhoto(photoId);
+	}
+	
+	const selectedCount = await db.getSelectedPhotosCount();
+	appStore.update((state) => ({ ...state, selectedPhotosCount: selectedCount }));
 }
 
 // Select all photos in a group
-export function selectAllInGroup(groupId: string) {
-	appStore.update((state) => {
-		const group = state.groups.find((g) => g.id === groupId);
-		if (!group) return state;
+export async function selectAllInGroup(groupId: string) {
+	const state = get(appStore);
+	const group = state.groups.find((g) => g.id === groupId);
+	if (!group) return;
 
-		const newSelected = new Set(state.selectedPhotos);
-		group.photoIds.forEach((id) => newSelected.add(id));
-		return { ...state, selectedPhotos: newSelected };
-	});
+	for (const photoId of group.photoIds) {
+		await db.selectPhoto(photoId);
+	}
+	
+	const selectedCount = await db.getSelectedPhotosCount();
+	appStore.update((state) => ({ ...state, selectedPhotosCount: selectedCount }));
 }
 
 // Clear selection
-export function clearSelection() {
+export async function clearSelection() {
+	await db.clearSelectedPhotos();
 	appStore.update((state) => ({
 		...state,
-		selectedPhotos: new Set()
+		selectedPhotosCount: 0
 	}));
 }
 

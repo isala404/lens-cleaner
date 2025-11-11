@@ -109,7 +109,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 		case 'initiateDeletion':
 			console.log('🗑️ Received initiateDeletion for tab:', message.tabId);
 			// Start the deletion process asynchronously
-			handleInitiateDeletion(message.tabId, message.photoIds).catch((error) =>
+			handleInitiateDeletion(message.tabId).catch((error) =>
 				console.error('🔴 Error in handleInitiateDeletion:', error)
 			);
 			// Respond immediately
@@ -410,11 +410,21 @@ async function handleInitiateScan(tabId: number, options: { maxScrolls?: number 
 /**
  * Initiate deletion workflow on a tab
  * This opens Google Photos albums page and starts the deletion workflow
+ * Fetches selected photo IDs from IndexedDB and sends them to content script in batches
  */
-async function handleInitiateDeletion(tabId: number, photoIds: string[]) {
-	console.log('🗑️ Service worker initiating deletion workflow for', photoIds.length, 'photos');
+async function handleInitiateDeletion(tabId: number) {
+	console.log('🗑️ Service worker initiating deletion workflow');
 
 	try {
+		// Get count of selected photos
+		const selectedCount = await db.getSelectedPhotosCount();
+		console.log(`🗑️ Found ${selectedCount} selected photos to delete`);
+
+		if (selectedCount === 0) {
+			console.log('🗑️ No photos selected, aborting deletion workflow');
+			return;
+		}
+
 		// Update the tab to navigate to albums page
 		await chrome.tabs.update(tabId, {
 			url: 'https://photos.google.com/albums'
@@ -425,14 +435,21 @@ async function handleInitiateDeletion(tabId: number, photoIds: string[]) {
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars
 			const listener = (updatedTabId: number, changeInfo: any, _tab: chrome.tabs.Tab) => {
 				if (updatedTabId === tabId && changeInfo.status === 'complete') {
-					console.log('🗑️ Albums page loaded, sending startDeletion message...');
+					console.log('🗑️ Albums page loaded, fetching selected photos from IndexedDB...');
 
 					// Remove listener
 					chrome.tabs.onUpdated.removeListener(listener);
 
-					// Wait for content script to initialize
+					// Wait for content script to initialize, then fetch and send photo IDs
 					setTimeout(async () => {
 						try {
+							// Fetch all selected photo IDs from IndexedDB
+							// For now, we'll use getAllSelectedPhotos since we need to pass all IDs to content script
+							// In the future, content script could query IndexedDB directly
+							const photoIds = await db.getAllSelectedPhotos();
+							
+							console.log(`🗑️ Fetched ${photoIds.length} photo IDs from IndexedDB`);
+
 							await chrome.tabs.sendMessage(tabId, {
 								action: 'startDeletion',
 								photoIds: photoIds
@@ -440,7 +457,7 @@ async function handleInitiateDeletion(tabId: number, photoIds: string[]) {
 							console.log('🗑️ Deletion message sent successfully');
 							resolve(undefined);
 						} catch (error) {
-							console.error('🗑️ Error sending message to content script:', error);
+							console.error('🗑️ Error fetching photo IDs or sending message:', error);
 							reject(error);
 						}
 					}, 2000);
