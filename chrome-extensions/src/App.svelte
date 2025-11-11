@@ -19,7 +19,7 @@
 	} from './stores/appStore';
 
 	import db, { type Group, type Photo } from './lib/db';
-	import { uploadPhotos, startProcessing, getJobStatus, refundJob } from './lib/api';
+	import { uploadPhotos, startProcessing, getJobStatus, refundJob, verifyPayment } from './lib/api';
 	import {
 		preparePhotosForAutoSelect,
 		pollJobStatus,
@@ -202,29 +202,56 @@
 			determineCurrentStep();
 		}
 
-		// Check for payment redirect (job_id in URL)
+		// Check for payment redirect from Polar (checkout_id in URL)
 		const urlParams = new URLSearchParams(window.location.search);
-		const jobId = urlParams.get('job_id');
+		const checkoutId = urlParams.get('checkout_id');
 		const paymentStatus = urlParams.get('payment');
 
-		if (jobId && paymentStatus === 'success') {
-			// Save job ID and set ready status
-			autoSelectJobId = jobId;
-			localStorage.setItem('autoSelectJobId', jobId);
-			await db.saveAutoSelectJob({
-				jobId,
-				status: 'created',
-				email: '',
-				photoCount: $appStore.stats.totalPhotos,
-				createdAt: new Date().toISOString()
-			});
+		if (checkoutId && paymentStatus === 'success') {
+			try {
+				// Verify payment with Polar
+				const verificationResponse = await verifyPayment(checkoutId);
 
-			// Clear URL parameters
-			window.history.replaceState({}, document.title, window.location.pathname);
+				if (verificationResponse.payment_verified) {
+					// Save job ID from verification response
+					const jobId = verificationResponse.job_id;
+					autoSelectJobId = jobId;
+					localStorage.setItem('autoSelectJobId', jobId);
+					await db.saveAutoSelectJob({
+						jobId,
+						status: 'created',
+						email: '',
+						photoCount: $appStore.stats.totalPhotos,
+						createdAt: new Date().toISOString()
+					});
 
-			// Set status to ready - user must click button to start upload
-			autoSelectStatus = 'ready';
-			saveAutoSelectState();
+					// Clear URL parameters
+					window.history.replaceState({}, document.title, window.location.pathname);
+
+					// Set status to ready - user must click button to start upload
+					autoSelectStatus = 'ready';
+					saveAutoSelectState();
+				} else {
+					// Payment not verified yet
+					console.error('Payment not verified:', verificationResponse);
+					autoSelectError = 'Payment verification pending. Please try again in a moment.';
+					autoSelectStatus = 'failed';
+					canRetryAutoSelect = true;
+					saveAutoSelectState();
+
+					// Clear URL parameters
+					window.history.replaceState({}, document.title, window.location.pathname);
+				}
+			} catch (error) {
+				console.error('Error verifying payment:', error);
+				autoSelectError = error instanceof Error ? error.message : 'Failed to verify payment';
+				autoSelectStatus = 'failed';
+				canRetryAutoSelect = true;
+				saveAutoSelectState();
+
+				// Clear URL parameters
+				window.history.replaceState({}, document.title, window.location.pathname);
+			}
 		} else {
 			// Check if there's a saved auto-select state
 			const savedState = restoreAutoSelectState();
@@ -383,11 +410,12 @@
 		// Just open modal, handled in ReviewScreen
 	}
 
-	async function handleCheckoutCreated(checkoutUrl: string, jobId: string) {
+	async function handleCheckoutCreated(checkoutUrl: string, checkoutId: string, jobId: string) {
 		// Store job ID for when payment completes
-		// Note: PaymentModal will handle navigation to checkout page
+		// Note: PaymentModal will handle navigation to Polar checkout page
 		autoSelectJobId = jobId;
 		localStorage.setItem('autoSelectJobId', jobId);
+		localStorage.setItem('autoSelectCheckoutId', checkoutId);
 	}
 
 	async function handleAutoSelectUpload() {

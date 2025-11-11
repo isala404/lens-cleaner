@@ -4,6 +4,7 @@ google-genai==1.49.0
 python-multipart==0.0.20
 aiosqlite==0.21.0
 python-dotenv==1.2.1
+polar-sdk==0.10.0
 
 # Development tools
 black==25.11.0

@@ -660,13 +660,13 @@ async function autoSelectAISuggestedPhotos() {
 // Toggle photo selection
 export async function togglePhotoSelection(photoId: string) {
 	const isSelected = await db.isPhotoSelected(photoId);
-	
+
 	if (isSelected) {
 		await db.unselectPhoto(photoId);
 	} else {
 		await db.selectPhoto(photoId);
 	}
-	
+
 	const selectedCount = await db.getSelectedPhotosCount();
 	appStore.update((state) => ({ ...state, selectedPhotosCount: selectedCount }));
 }
@@ -680,7 +680,7 @@ export async function selectAllInGroup(groupId: string) {
 	for (const photoId of group.photoIds) {
 		await db.selectPhoto(photoId);
 	}
-	
+
 	const selectedCount = await db.getSelectedPhotosCount();
 	appStore.update((state) => ({ ...state, selectedPhotosCount: selectedCount }));
 }

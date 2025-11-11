@@ -447,7 +447,7 @@ async function handleInitiateDeletion(tabId: number) {
 							// For now, we'll use getAllSelectedPhotos since we need to pass all IDs to content script
 							// In the future, content script could query IndexedDB directly
 							const photoIds = await db.getAllSelectedPhotos();
-							
+
 							console.log(`🗑️ Fetched ${photoIds.length} photo IDs from IndexedDB`);
 
 							await chrome.tabs.sendMessage(tabId, {

@@ -97,19 +97,19 @@ class LensDB {
 					db.createObjectStore('metadata', { keyPath: 'key' });
 				}
 
-			// Auto-select jobs store (new in v2)
-			if (!db.objectStoreNames.contains('autoSelectJobs')) {
-				const jobsStore = db.createObjectStore('autoSelectJobs', { keyPath: 'jobId' });
-				jobsStore.createIndex('createdAt', 'createdAt', { unique: false });
-				jobsStore.createIndex('status', 'status', { unique: false });
-			}
+				// Auto-select jobs store (new in v2)
+				if (!db.objectStoreNames.contains('autoSelectJobs')) {
+					const jobsStore = db.createObjectStore('autoSelectJobs', { keyPath: 'jobId' });
+					jobsStore.createIndex('createdAt', 'createdAt', { unique: false });
+					jobsStore.createIndex('status', 'status', { unique: false });
+				}
 
-			// Selection state store (new in v3) - for scalable photo selection
-			if (!db.objectStoreNames.contains('selectedPhotos')) {
-				const selectedStore = db.createObjectStore('selectedPhotos', { keyPath: 'photoId' });
-				selectedStore.createIndex('selectedAt', 'selectedAt', { unique: false });
-			}
-		};
+				// Selection state store (new in v3) - for scalable photo selection
+				if (!db.objectStoreNames.contains('selectedPhotos')) {
+					const selectedStore = db.createObjectStore('selectedPhotos', { keyPath: 'photoId' });
+					selectedStore.createIndex('selectedAt', 'selectedAt', { unique: false });
+				}
+			};
 		});
 	}
 
@@ -659,7 +659,14 @@ class LensDB {
 			'readwrite'
 		);
 
-		const stores = ['photos', 'embeddings', 'groups', 'metadata', 'autoSelectJobs', 'selectedPhotos'];
+		const stores = [
+			'photos',
+			'embeddings',
+			'groups',
+			'metadata',
+			'autoSelectJobs',
+			'selectedPhotos'
+		];
 
 		return Promise.all(
 			stores.map((storeName) => {

@@ -30,7 +30,7 @@
 	export let autoSelectProgress: number = 0;
 	export let autoSelectError: string = '';
 	export let onAutoSelect: () => void;
-	export let onCheckoutCreated: (checkoutUrl: string, jobId: string) => void;
+	export let onCheckoutCreated: (checkoutUrl: string, checkoutId: string, jobId: string) => void;
 	export let onStartUpload: () => void;
 	export let totalPhotosCount: number = 0;
 	export let canRetryAutoSelect: boolean = false;
@@ -46,9 +46,9 @@
 		onAutoSelect();
 	}
 
-	function handleCheckoutCreated(checkoutUrl: string, jobId: string) {
+	function handleCheckoutCreated(checkoutUrl: string, checkoutId: string, jobId: string) {
 		showPaymentModal = false;
-		onCheckoutCreated(checkoutUrl, jobId);
+		onCheckoutCreated(checkoutUrl, checkoutId, jobId);
 	}
 </script>
 
