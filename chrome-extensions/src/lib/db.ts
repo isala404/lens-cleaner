@@ -529,6 +529,7 @@ class LensDB {
 
 	/**
 	 * Get count of photos with embeddings
+	 * Uses cursor instead of IDBKeyRange.only() for better browser compatibility
 	 */
 	async getPhotosWithEmbeddingCount(): Promise<number> {
 		if (!this.db) throw new Error('Database not initialized');
@@ -537,9 +538,21 @@ class LensDB {
 		const store = transaction.objectStore('photos');
 
 		return new Promise((resolve, reject) => {
-			const range = IDBKeyRange.only(true);
-			const request = store.index('hasEmbedding').count(range);
-			request.onsuccess = () => resolve(request.result);
+			let count = 0;
+			const request = store.openCursor();
+
+			request.onsuccess = (event) => {
+				const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
+				if (cursor) {
+					if (cursor.value.hasEmbedding === true) {
+						count++;
+					}
+					cursor.continue();
+				} else {
+					resolve(count);
+				}
+			};
+
 			request.onerror = () => reject(request.error);
 		});
 	}
