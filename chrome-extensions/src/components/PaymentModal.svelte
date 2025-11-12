@@ -1,42 +1,52 @@
 <script lang="ts">
-	import { createCheckout } from '../lib/api';
+	import { createCheckout, calculatePricing } from '../lib/api';
 
 	export let show: boolean;
 	export let photoCount: number;
 	export let onClose: () => void;
-	export let onCheckoutCreated: (checkoutUrl: string, jobId: string) => void;
+	export let onCheckoutCreated: (checkoutUrl: string, checkoutId: string, jobId: string) => void;
 
-	let email = '';
 	let isSubmitting = false;
+	let isLoadingPricing = false;
 	let error = '';
 
-	const PRICE_PER_PHOTO = 0.01;
-	$: totalCost = photoCount * PRICE_PER_PHOTO;
+	// Pricing state
+	let isFree = true;
+	let chargedPhotos = 0;
+	let totalCost = 0;
+
+	// Load pricing when component opens or photoCount changes
+	$: if (show && photoCount > 0) {
+		loadPricing();
+	}
+
+	async function loadPricing() {
+		try {
+			isLoadingPricing = true;
+			error = '';
+
+			const pricing = await calculatePricing(photoCount);
+			isFree = pricing.is_free;
+			chargedPhotos = pricing.charged_photos;
+			totalCost = pricing.total_cost;
+		} catch (err) {
+			error = err instanceof Error ? err.message : 'Failed to calculate pricing';
+		} finally {
+			isLoadingPricing = false;
+		}
+	}
 
 	async function handlePay() {
-		if (!email) {
-			error = 'Please enter your email';
-			return;
-		}
-
-		// Basic email validation
-		const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-		if (!emailRegex.test(email)) {
-			error = 'Please enter a valid email';
-			return;
-		}
-
 		try {
 			isSubmitting = true;
 			error = '';
 
-			const response = await createCheckout(email, photoCount);
+			const response = await createCheckout(photoCount);
 
 			// Save checkout info before navigating
-			const jobId = response.checkout_id;
-			onCheckoutCreated(response.checkout_url, jobId);
+			onCheckoutCreated(response.checkout_url, response.checkout_id, response.job_id);
 
-			// Navigate to checkout page in same window
+			// Navigate to Polar checkout page
 			window.location.href = response.checkout_url;
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to create checkout';
@@ -49,14 +59,22 @@
 			onClose();
 		}
 	}
+
+	function handleBackdropKeydown(event: KeyboardEvent) {
+		if (event.key === 'Escape') {
+			onClose();
+		}
+	}
 </script>
 
 {#if show}
 	<div
 		class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
 		onclick={handleBackdropClick}
+		onkeydown={handleBackdropKeydown}
 		role="dialog"
 		aria-modal="true"
+		tabindex="0"
 	>
 		<div
 			class="shadow-brutalist-lg animate-slide-in relative w-full max-w-2xl rounded-2xl border-4 border-black bg-white p-8"
@@ -74,39 +92,43 @@
 			<div class="mb-6 text-center">
 				<div class="mb-4 text-6xl">🎯</div>
 				<h2 class="mb-2 text-4xl font-black text-black">AI-Powered Auto Select</h2>
-				<p class="text-lg font-semibold text-gray-600">Let AI choose the best photos to keep</p>
+				<p class="text-lg font-semibold text-gray-600">
+					{isFree
+						? 'Free analysis for 50 photos or less!'
+						: 'Let AI choose the best photos to keep'}
+				</p>
 			</div>
 
-			<!-- Value Proposition -->
+			<!-- Info Section -->
 			<div
 				class="mb-6 space-y-4 rounded-xl border-4 border-black bg-gradient-to-br from-purple-50 to-pink-50 p-6"
 			>
-				<h3 class="text-xl font-black text-black">What you get:</h3>
+				<h3 class="text-xl font-black text-black">How it works:</h3>
 				<ul class="space-y-3">
+					<li class="flex items-start gap-3">
+						<span class="text-2xl">📸</span>
+						<div>
+							<p class="font-bold text-black">Photo Analysis</p>
+							<p class="text-sm text-gray-600">
+								You have <strong>{photoCount}</strong> photos ready to analyze
+							</p>
+						</div>
+					</li>
+					<li class="flex items-start gap-3">
+						<span class="text-2xl">⏱️</span>
+						<div>
+							<p class="font-bold text-black">Time-Consuming Process</p>
+							<p class="text-sm text-gray-600">
+								Manual selection takes hours. Let our AI do it for you automatically!
+							</p>
+						</div>
+					</li>
 					<li class="flex items-start gap-3">
 						<span class="text-2xl">🤖</span>
 						<div>
-							<p class="font-bold text-black">Smart Analysis</p>
+							<p class="font-bold text-black">Smart AI Analysis</p>
 							<p class="text-sm text-gray-600">
-								Powered by Google Gemini AI to identify duplicates and low-quality photos
-							</p>
-						</div>
-					</li>
-					<li class="flex items-start gap-3">
-						<span class="text-2xl">⚡</span>
-						<div>
-							<p class="font-bold text-black">Save Time</p>
-							<p class="text-sm text-gray-600">
-								No more manual selection - AI does the heavy lifting in hours
-							</p>
-						</div>
-					</li>
-					<li class="flex items-start gap-3">
-						<span class="text-2xl">✨</span>
-						<div>
-							<p class="font-bold text-black">Keep the Best</p>
-							<p class="text-sm text-gray-600">
-								Preserves photos with artistic merit, genuine emotions, and unique moments
+								Identify duplicates and low-quality photos while preserving your best memories
 							</p>
 						</div>
 					</li>
@@ -124,39 +146,51 @@
 
 			<!-- Pricing -->
 			<div class="mb-6 rounded-xl border-4 border-black bg-gray-50 p-6">
-				<div class="mb-4 space-y-2">
-					<div class="flex items-center justify-between">
-						<span class="font-semibold text-gray-700">Photos to analyze:</span>
-						<span class="text-xl font-black text-black">{photoCount}</span>
+				{#if isLoadingPricing}
+					<div class="flex items-center justify-center py-8">
+						<div
+							class="h-8 w-8 animate-spin rounded-full border-4 border-gray-300 border-t-black"
+						></div>
+						<span class="ml-3 font-semibold text-gray-700">Calculating pricing...</span>
 					</div>
-					<div class="flex items-center justify-between">
-						<span class="font-semibold text-gray-700">Price per photo:</span>
-						<span class="font-mono text-lg font-bold text-black">${PRICE_PER_PHOTO.toFixed(2)}</span
-						>
+				{:else}
+					<div class="mb-4 space-y-2">
+						<div class="flex items-center justify-between">
+							<span class="font-semibold text-gray-700">Total photos to analyze:</span>
+							<span class="text-xl font-black text-black">{photoCount}</span>
+						</div>
+						{#if !isFree}
+							<div class="flex items-center justify-between">
+								<span class="font-semibold text-gray-700">Charged for:</span>
+								<span class="font-mono text-lg font-bold text-black">{chargedPhotos} photos</span>
+							</div>
+						{/if}
 					</div>
-				</div>
-				<div class="border-t-4 border-black pt-4">
-					<div class="flex items-center justify-between">
-						<span class="text-lg font-black text-gray-900">Total Cost:</span>
-						<span class="text-3xl font-black text-black">${totalCost.toFixed(2)}</span>
+					<div class="border-t-4 border-black pt-4">
+						<div class="flex items-center justify-between">
+							<span class="text-lg font-black text-gray-900">Total Cost:</span>
+							<span class="text-3xl font-black text-black">
+								{#if isFree}
+									FREE
+								{:else}
+									${totalCost.toFixed(2)}
+								{/if}
+							</span>
+						</div>
 					</div>
-				</div>
+				{/if}
 			</div>
 
-			<!-- Email Input -->
-			<div class="mb-6">
-				<label for="email" class="mb-2 block text-sm font-bold text-gray-700">
-					Email for receipt:
-				</label>
-				<input
-					type="email"
-					id="email"
-					bind:value={email}
-					placeholder="your@email.com"
-					class="w-full rounded-lg border-4 border-black px-4 py-3 font-mono text-lg focus:ring-4 focus:ring-purple-300 focus:outline-none"
-					disabled={isSubmitting}
-				/>
-			</div>
+			{#if !isFree}
+				<!-- Amount Warning -->
+				<div class="mb-6 rounded-lg border-2 border-red-400 bg-red-50 p-4">
+					<p class="text-center text-sm font-semibold text-red-900">
+						⚠️ <strong>IMPORTANT:</strong> Do not modify the payment amount during checkout. If you change
+						the amount, your transaction will be marked as tampered and you will need to contact support
+						for assistance.
+					</p>
+				</div>
+			{/if}
 
 			<!-- Error Message -->
 			{#if error}
@@ -178,10 +212,18 @@
 				</button>
 				<button
 					onclick={handlePay}
-					disabled={isSubmitting}
+					disabled={isSubmitting || isLoadingPricing}
 					class="shadow-brutalist hover:shadow-brutalist-lg flex-1 rounded-xl border-4 border-black bg-gradient-to-r from-purple-500 to-pink-500 py-3 font-black text-white transition-all hover:translate-x-[-2px] hover:translate-y-[-2px] disabled:opacity-50"
 				>
-					{isSubmitting ? '⏳ Processing...' : '💳 Proceed to Payment'}
+					{#if isLoadingPricing}
+						⏳ Calculating...
+					{:else if isSubmitting}
+						⏳ Processing...
+					{:else if isFree}
+						🎉 Start Free Analysis
+					{:else}
+						💳 Proceed to Payment
+					{/if}
 				</button>
 			</div>
 

@@ -5,19 +5,44 @@
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
+export interface PricingResponse {
+	photo_count: number;
+	charged_photos: number;
+	total_cost: number;
+	amount_in_cents: number;
+	is_free: boolean;
+}
+
 export interface CheckoutResponse {
 	checkout_url: string;
 	checkout_id: string;
+	job_id: string;
+	total_photos: number;
+	charged_photos: number;
 	total_cost: number;
+	amount_warning: string;
+}
+
+export interface PaymentVerificationResponse {
+	job_id: string;
+	payment_verified: boolean;
+	photo_count: number;
+	charged_photo_count: number;
+	support_email: string;
+	status?: string;
 }
 
 export interface JobStatusResponse {
 	job_id: string;
 	status: string;
-	email: string;
 	photo_count: number;
+	charged_photo_count: number;
 	created_at: string;
 	completed_at?: string;
+	payment_verified: boolean;
+	amount_tampered: boolean;
+	expected_amount?: number;
+	actual_amount?: number;
 	results?: {
 		deletions: Array<{
 			photo_id: string;
@@ -34,22 +59,60 @@ export interface RefundResponse {
 }
 
 /**
- * Create a checkout session
+ * Calculate pricing for a given number of photos
  */
-export async function createCheckout(email: string, photoCount: number): Promise<CheckoutResponse> {
+export async function calculatePricing(photoCount: number): Promise<PricingResponse> {
+	const response = await fetch(`${API_BASE_URL}/v1/api/pricing`, {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/json'
+		},
+		body: JSON.stringify({
+			photo_count: photoCount
+		})
+	});
+
+	if (!response.ok) {
+		const errorText = await response.text().catch(() => response.statusText);
+		throw new Error(`Failed to calculate pricing: ${errorText}`);
+	}
+
+	return response.json();
+}
+
+/**
+ * Create a checkout session with Polar
+ */
+export async function createCheckout(photoCount: number): Promise<CheckoutResponse> {
 	const response = await fetch(`${API_BASE_URL}/v1/api/checkout`, {
 		method: 'POST',
 		headers: {
 			'Content-Type': 'application/json'
 		},
 		body: JSON.stringify({
-			email,
 			photo_count: photoCount
 		})
 	});
 
 	if (!response.ok) {
-		throw new Error(`Failed to create checkout: ${response.statusText}`);
+		const errorText = await response.text().catch(() => response.statusText);
+		throw new Error(`Failed to create checkout: ${errorText}`);
+	}
+
+	return response.json();
+}
+
+/**
+ * Verify payment with Polar after checkout
+ */
+export async function verifyPayment(checkoutId: string): Promise<PaymentVerificationResponse> {
+	const response = await fetch(`${API_BASE_URL}/v1/api/checkout/${checkoutId}/verify`, {
+		method: 'GET'
+	});
+
+	if (!response.ok) {
+		const errorText = await response.text().catch(() => response.statusText);
+		throw new Error(`Failed to verify payment: ${errorText}`);
 	}
 
 	return response.json();
@@ -68,7 +131,8 @@ export async function uploadPhoto(jobId: string, photo: File): Promise<void> {
 	});
 
 	if (!response.ok) {
-		throw new Error(`Failed to upload photo: ${response.statusText}`);
+		const errorText = await response.text().catch(() => response.statusText);
+		throw new Error(`Failed to upload photo: ${errorText}`);
 	}
 }
 
@@ -113,7 +177,8 @@ export async function startProcessing(
 	});
 
 	if (!response.ok) {
-		throw new Error(`Failed to start processing: ${response.statusText}`);
+		const errorText = await response.text().catch(() => response.statusText);
+		throw new Error(`Failed to start processing: ${errorText}`);
 	}
 }
 

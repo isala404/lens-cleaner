@@ -191,7 +191,7 @@ async function handleStartEmbeddings(options: { batchSize?: number } = {}) {
 
 	try {
 		// Get photos without embeddings
-		const photos = await db.getPhotosWithoutEmbeddings(10000); // Process all
+		const photos = await db.getPhotosWithoutEmbeddings(); // Process all
 		processingProgress.total = photos.length;
 
 		console.log(`Found ${photos.length} photos to process`);
@@ -447,7 +447,7 @@ async function handleInitiateDeletion(tabId: number) {
 							// For now, we'll use getAllSelectedPhotos since we need to pass all IDs to content script
 							// In the future, content script could query IndexedDB directly
 							const photoIds = await db.getAllSelectedPhotos();
-							
+
 							console.log(`🗑️ Fetched ${photoIds.length} photo IDs from IndexedDB`);
 
 							await chrome.tabs.sendMessage(tabId, {
