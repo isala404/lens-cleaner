@@ -3,7 +3,7 @@
 	import PhotoGrid from './PhotoGrid.svelte';
 
 	export let totalPhotos: number;
-	export let photos: Photo[];
+	export let photos: Photo[]; // Legacy prop, not used anymore
 	export let onStartIndexing: () => void;
 	export let getCachedBlobUrl: (photo: Photo) => string;
 </script>
@@ -28,5 +28,6 @@
 		</div>
 	</div>
 
-	<PhotoGrid {photos} {getCachedBlobUrl} />
+	<!-- Use pagination mode for PhotoGrid -->
+	<PhotoGrid {getCachedBlobUrl} enablePagination={true} {totalPhotos} />
 </div>

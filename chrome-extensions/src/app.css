@@ -133,3 +133,8 @@ body {
 	border-radius: 20px;
 	position: relative;
 }
+
+/* Ensure review screen UI (button shadows) are visible and not clipped */
+.review-screen-container {
+	overflow: visible;
+}

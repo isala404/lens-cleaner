@@ -49,16 +49,14 @@ POLAR_FREE_PRODUCT_ID = os.getenv("POLAR_FREE_PRODUCT_ID")
 POLAR_WEBHOOK_SECRET = os.getenv("POLAR_WEBHOOK_SECRET")
 SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL", "support@tallisa.dev")
 
+required_env_vars = [POLAR_ACCESS_TOKEN, POLAR_PRODUCT_ID, POLAR_FREE_PRODUCT_ID, POLAR_WEBHOOK_SECRET, GOOGLE_API_KEY]
+for var in required_env_vars:
+    if not var:
+        raise ValueError(f"Environment variable {var} is not set")
+
 # Initialize Polar SDK
-polar = None
-if POLAR_ACCESS_TOKEN:
-    try:
-        polar = Polar(access_token=POLAR_ACCESS_TOKEN, server="sandbox")
-        logger.info("Polar SDK initialized successfully")
-    except Exception as e:
-        logger.error(f"Failed to initialize Polar SDK: {e}")
-else:
-    logger.warning("POLAR_ACCESS_TOKEN not set - Polar payments will not work")
+polar = Polar(access_token=POLAR_ACCESS_TOKEN, server="sandbox")
+logger.info("Polar SDK initialized successfully")
 
 # Ensure upload directory exists
 UPLOAD_DIR.mkdir(exist_ok=True)
@@ -858,31 +856,14 @@ async def process_job_with_gemini(job_id: str, upload_dir: str, photo_metadata: 
     logger.info(f"Background processing started: job_id={job_id}")
 
     try:
-        api_key = GOOGLE_API_KEY
-
-        if not api_key:
-            # If no API key, use mock processing
-            logger.warning(f"No API key found, using mock processing for job {job_id}")
-            await asyncio.sleep(10)
-
-            results = {
-                "deletions": [
-                    {
-                        "photo_id": (photo_metadata[0]["id"] if photo_metadata else "mock"),
-                        "reason": "Mock deletion - Blurry image with poor focus",
-                        "confidence": "high",
-                    }
-                ]
-            }
-        else:
-            # Use real Gemini processing
-            logger.info(f"Starting Gemini processing: job_id={job_id}")
-            processor = GeminiProcessor(api_key)
-            results = await processor.process_photos(job_id, Path(upload_dir), photo_metadata)
-            logger.info(
-                f"Gemini processing completed: job_id={job_id}, "
-                f"deletions={len(results.get('deletions', []))}"
-            )
+        # Use real Gemini processing
+        logger.info(f"Starting Gemini processing: job_id={job_id}")
+        processor = GeminiProcessor(GOOGLE_API_KEY)
+        results = await processor.process_photos(job_id, Path(upload_dir), photo_metadata)
+        logger.info(
+            f"Gemini processing completed: job_id={job_id}, "
+            f"deletions={len(results.get('deletions', []))}"
+        )
 
         # Update job as completed
         async with aiosqlite.connect(DATABASE_PATH) as db:

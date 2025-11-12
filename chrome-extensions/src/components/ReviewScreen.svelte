@@ -1,11 +1,13 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import type { Photo, Group } from '../lib/db';
 	import PhotoGrid from './PhotoGrid.svelte';
 	import DuplicateGroup from './DuplicateGroup.svelte';
 	import PaymentModal from './PaymentModal.svelte';
 	import AutoSelectProcessingBanner from './AutoSelectProcessingBanner.svelte';
+	import db from '../lib/db';
 
-	export let displayGroups: Group[];
+	export let displayGroups: Group[] = []; // Initial groups (can be empty for pagination)
 	export let ungroupedPhotos: Photo[];
 	export let selectedCount: number;
 	export let onToggleSelection: (photoId: string) => void;
@@ -17,6 +19,16 @@
 	export let onRescan: () => void;
 	export let getCachedBlobUrl: (photo: Photo) => string;
 	export let getGroupPhotos: (group: Group) => Promise<Photo[]>;
+
+	// Pagination props
+	export let enableGroupPagination = false;
+	export let totalGroupsCount: number = 0;
+
+	const GROUPS_PER_PAGE = 20;
+	let paginatedGroups: Group[] = displayGroups;
+	let loadedGroupsCount = 0;
+	let isLoadingGroups = false;
+	let groupsContainer: HTMLElement | null = null;
 
 	// Auto-select props
 	export let autoSelectStatus:
@@ -42,6 +54,58 @@
 
 	let showPaymentModal = false;
 
+	// Pagination logic
+	onMount(async () => {
+		if (enableGroupPagination && totalGroupsCount > 0) {
+			await loadMoreGroups();
+			setupGroupScrollListener();
+		} else {
+			paginatedGroups = displayGroups;
+		}
+	});
+
+	async function loadMoreGroups() {
+		if (!enableGroupPagination) return;
+		if (isLoadingGroups || loadedGroupsCount >= totalGroupsCount) return;
+
+		isLoadingGroups = true;
+		try {
+			const batch = await db.getGroupsBatch(loadedGroupsCount, GROUPS_PER_PAGE);
+			paginatedGroups = [...paginatedGroups, ...batch];
+			loadedGroupsCount += batch.length;
+		} finally {
+			isLoadingGroups = false;
+		}
+	}
+
+	function setupGroupScrollListener() {
+		const checkScroll = () => {
+			if (!groupsContainer) return;
+			const { scrollTop, scrollHeight, clientHeight } = groupsContainer;
+			// Load more when 80% scrolled
+			if (scrollTop + clientHeight > scrollHeight * 0.8 && !isLoadingGroups) {
+				loadMoreGroups();
+			}
+		};
+
+		// Find scroll container
+		let retries = 0;
+		const findContainer = setInterval(() => {
+			groupsContainer = document.querySelector('.review-screen-container');
+			if (groupsContainer || retries++ > 10) {
+				clearInterval(findContainer);
+				if (groupsContainer) {
+					groupsContainer.addEventListener('scroll', checkScroll);
+				}
+			}
+		}, 100);
+	}
+
+	// Update paginatedGroups when displayGroups changes (non-pagination mode)
+	$: if (!enableGroupPagination) {
+		paginatedGroups = displayGroups;
+	}
+
 	function handleAutoSelect() {
 		showPaymentModal = true;
 		onAutoSelect();
@@ -53,7 +117,7 @@
 	}
 </script>
 
-{#if displayGroups.length === 0 && ungroupedPhotos.length === 0}
+{#if paginatedGroups.length === 0 && ungroupedPhotos.length === 0}
 	<div class="px-5 py-20 text-center">
 		<div class="mb-6 text-8xl">✨</div>
 		<h2 class="mb-3 text-5xl font-black text-black">No duplicates found!</h2>
@@ -80,7 +144,7 @@
 		</div>
 	</div>
 {:else}
-	<div>
+	<div class="review-screen-container {enableGroupPagination ? 'h-full overflow-y-auto' : ''}">
 		<!-- Auto-select Processing Banner -->
 		{#if autoSelectStatus === 'uploading'}
 			<AutoSelectProcessingBanner
@@ -107,7 +171,7 @@
 			/>
 		{/if}
 
-		{#if displayGroups.length > 0}
+		{#if paginatedGroups.length > 0 || (enableGroupPagination && totalGroupsCount > 0)}
 			<div class="mb-8 flex items-start justify-between border-b-4 border-black pb-6">
 				<div class="flex flex-col gap-3">
 					<button
@@ -121,7 +185,7 @@
 					</button>
 					<div>
 						<h2 class="mb-2 text-4xl font-black text-black">
-							Found {displayGroups.length} duplicate groups
+							Found {enableGroupPagination ? totalGroupsCount : paginatedGroups.length} duplicate groups
 						</h2>
 						<p class="text-lg font-semibold text-brutalist-gray">
 							Click photos to mark for deletion
@@ -136,6 +200,19 @@
 							class="shadow-brutalist hover:shadow-brutalist-lg rounded-xl border-4 border-black bg-gradient-to-r from-purple-500 to-pink-500 px-6 py-3 text-lg font-black whitespace-nowrap text-white transition-all hover:translate-x-[-2px] hover:translate-y-[-2px]"
 						>
 							🤖 Auto Select
+						</button>
+					{/if}
+
+					<!-- Verifying payment loader -->
+					{#if autoSelectStatus === 'payment'}
+						<button
+							disabled
+							class="shadow-brutalist flex items-center justify-center gap-3 rounded-xl border-4 border-black bg-gradient-to-r from-yellow-400 to-yellow-500 px-6 py-3 text-lg font-black whitespace-nowrap text-white transition-all disabled:opacity-75"
+						>
+							<div
+								class="inline-block h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-black"
+							></div>
+							⏳ Verifying payment...
 						</button>
 					{/if}
 
@@ -170,7 +247,7 @@
 
 			<!-- Duplicate Groups -->
 			<div class="mb-12 flex flex-col gap-8">
-				{#each displayGroups as group (group.id)}
+				{#each paginatedGroups as group (group.id)}
 					{#await getGroupPhotos(group)}
 						<div
 							class="shadow-brutalist flex min-h-[200px] items-center justify-center rounded-2xl border-4 border-black bg-pastel-pink-50 p-6"
@@ -189,6 +266,22 @@
 						/>
 					{/await}
 				{/each}
+
+				<!-- Loading indicator for groups -->
+				{#if enableGroupPagination && isLoadingGroups}
+					<div class="flex justify-center p-8">
+						<div
+							class="h-10 w-10 animate-spin rounded-full border-4 border-gray-300 border-t-black"
+						></div>
+					</div>
+				{/if}
+
+				<!-- All groups loaded message -->
+				{#if enableGroupPagination && loadedGroupsCount >= totalGroupsCount && paginatedGroups.length > 0}
+					<div class="p-4 text-center text-sm text-gray-500">
+						All {totalGroupsCount} groups loaded
+					</div>
+				{/if}
 			</div>
 		{/if}
 

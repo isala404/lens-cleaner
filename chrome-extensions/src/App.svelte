@@ -210,6 +210,10 @@
 
 		if (checkoutId && paymentStatus === 'success') {
 			try {
+				// Show verifying state while we contact Polar
+				autoSelectStatus = 'payment';
+				saveAutoSelectState();
+
 				// Verify payment with Polar
 				const verificationResponse = await verifyPayment(checkoutId);
 
@@ -511,6 +515,8 @@
 						autoSelectStatus = 'completed';
 						clearAutoSelectState();
 						await refreshData();
+						// Full page restart after successful AI auto selection
+						location.reload();
 					},
 					(error, canRetry) => {
 						autoSelectStatus = 'failed';
@@ -529,6 +535,8 @@
 				autoSelectStatus = 'completed';
 				clearAutoSelectState();
 				await refreshData();
+				// Full page restart after successful AI auto selection
+				location.reload();
 			} else if (response.status === 'tampered') {
 				autoSelectStatus = 'failed';
 				autoSelectError = `Payment amount was modified during checkout. Please contact support@tallisa.dev for assistance. Expected: $${(response.expected_amount || 0) / 100}, Actual: $${(response.actual_amount || 0) / 100}`;
@@ -693,8 +701,8 @@
 		}
 	}
 
-	function handleSaveSettings() {
-		updateSettings({
+	async function handleSaveSettings() {
+		await updateSettings({
 			similarityThreshold: editingSettings.similarityThreshold,
 			timeWindowMinutes: editingSettings.timeWindowMinutes
 		});
@@ -879,6 +887,8 @@
 				onRetryAutoSelect={handleRetryAutoSelect}
 				onRefundAutoSelect={handleRefundAutoSelect}
 				{refundLoading}
+				enableGroupPagination={true}
+				totalGroupsCount={$appStore.stats.totalGroups}
 			/>
 		{/if}
 	</main>

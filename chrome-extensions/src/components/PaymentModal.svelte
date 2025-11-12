@@ -14,23 +14,37 @@
 	let isFree = true;
 	let chargedPhotos = 0;
 	let totalCost = 0;
+	let pricingLoaded = false;
 
-	// Load pricing when component opens or photoCount changes
-	$: if (show && photoCount > 0) {
+	// Load pricing when modal opens
+	$: if (show && photoCount > 0 && !pricingLoaded) {
 		loadPricing();
 	}
 
+	// Reset pricing state when modal closes
+	$: if (!show) {
+		pricingLoaded = false;
+		isLoadingPricing = false;
+		error = '';
+	}
+
 	async function loadPricing() {
+		// Prevent multiple simultaneous calls
+		if (isLoadingPricing) return;
+		
 		try {
 			isLoadingPricing = true;
 			error = '';
+			pricingLoaded = false;
 
 			const pricing = await calculatePricing(photoCount);
 			isFree = pricing.is_free;
 			chargedPhotos = pricing.charged_photos;
 			totalCost = pricing.total_cost;
+			pricingLoaded = true;
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to calculate pricing';
+			pricingLoaded = false;
 		} finally {
 			isLoadingPricing = false;
 		}
@@ -212,10 +226,10 @@
 				</button>
 				<button
 					onclick={handlePay}
-					disabled={isSubmitting || isLoadingPricing}
-					class="shadow-brutalist hover:shadow-brutalist-lg flex-1 rounded-xl border-4 border-black bg-gradient-to-r from-purple-500 to-pink-500 py-3 font-black text-white transition-all hover:translate-x-[-2px] hover:translate-y-[-2px] disabled:opacity-50"
+					disabled={isSubmitting || isLoadingPricing || !pricingLoaded}
+					class="shadow-brutalist hover:shadow-brutalist-lg flex-1 rounded-xl border-4 border-black bg-gradient-to-r from-purple-500 to-pink-500 py-3 font-black text-white transition-all hover:translate-x-[-2px] hover:translate-y-[-2px] disabled:opacity-50 disabled:cursor-not-allowed"
 				>
-					{#if isLoadingPricing}
+					{#if isLoadingPricing || !pricingLoaded}
 						⏳ Calculating...
 					{:else if isSubmitting}
 						⏳ Processing...
