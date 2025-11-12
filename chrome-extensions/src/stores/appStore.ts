@@ -1,12 +1,17 @@
 /**
- * Application state store
- * Manages photos, groups, processing state, and settings
+ * Application state store - STREAMING VERSION
+ * Manages stats, processing state, and settings (NO photo/group arrays!)
+ *
+ * Key changes from original:
+ * - Stores ONLY stats/counts, not photos/groups arrays
+ * - Uses batched operations for all database access
+ * - LSH-based grouping for O(n log n) performance
  */
 
 import { writable, derived, get } from 'svelte/store';
 import db, { type Photo, type Group, type Stats } from '../lib/db';
 import { EmbeddingsProcessor } from '../lib/embeddings';
-import { GroupingProcessor } from '../lib/grouping';
+import { LSHPhotoGrouper } from '../lib/grouping';
 
 // Settings interface
 export interface Settings {
@@ -21,14 +26,13 @@ export interface ProcessingProgress {
 	current: number;
 	total: number;
 	message: string;
+	phase?: 'building_index' | 'finding_duplicates' | 'saving_groups';
 }
 
-// Application state
+// Application state (METADATA ONLY - no photos/groups arrays!)
 interface AppState {
-	photos: Photo[];
-	groups: Group[];
 	stats: Stats;
-	selectedPhotosCount: number; // Now just a count, actual IDs stored in IndexedDB
+	selectedPhotosCount: number;
 	settings: Settings;
 	processingProgress: ProcessingProgress;
 	viewMode: 'groups' | 'all';
@@ -38,13 +42,14 @@ interface AppState {
 
 // Initialize default state
 const defaultState: AppState = {
-	photos: [],
-	groups: [],
 	stats: {
 		totalPhotos: 0,
 		photosWithEmbeddings: 0,
 		totalGroups: 0,
-		photosInGroups: 0
+		photosInGroups: 0,
+		ungroupedWithEmbeddings: 0,
+		selectedPhotos: 0,
+		lastUpdated: Date.now()
 	},
 	selectedPhotosCount: 0,
 	settings: {
@@ -68,7 +73,6 @@ export const appStore = writable<AppState>(defaultState);
 
 // Singleton instances
 let embeddingsProcessor: EmbeddingsProcessor | null = null;
-let groupingProcessor: GroupingProcessor | null = null;
 
 // Persist processing state
 function saveProcessingState(progress: ProcessingProgress, originalTotal?: number) {
@@ -79,7 +83,7 @@ function saveProcessingState(progress: ProcessingProgress, originalTotal?: numbe
 				type: progress.type,
 				current: progress.current,
 				total: progress.total,
-				originalTotal: originalTotal || progress.total, // Save original total for accurate progress
+				originalTotal: originalTotal || progress.total,
 				message: progress.message,
 				timestamp: Date.now()
 			})
@@ -96,10 +100,9 @@ function getSavedProcessingState(): (ProcessingProgress & { originalTotal?: numb
 		if (!saved) return null;
 
 		const state = JSON.parse(saved);
-		// Check if state is recent (within last hour) to avoid stale resumes
+		// Check if state is recent (within last hour)
 		const age = Date.now() - state.timestamp;
 		if (age > 3600000) {
-			// 1 hour
 			localStorage.removeItem('lensCleanerProcessingState');
 			return null;
 		}
@@ -146,21 +149,18 @@ export async function initializeApp() {
 			const photosWithoutEmbeddings = await db.getPhotosWithoutEmbeddings(1);
 
 			if (savedProgress.type === 'embedding' && photosWithoutEmbeddings.length > 0) {
-				// Resume embedding processing
 				appStore.update((s) => ({
 					...s,
 					processingProgress: savedProgress
 				}));
 				console.log('Resuming interrupted embedding process...');
 			} else if (savedProgress.type === 'grouping' && stats.photosWithEmbeddings > 0) {
-				// Resume grouping (even if groups exist, we'll clear them before resuming)
 				appStore.update((s) => ({
 					...s,
 					processingProgress: savedProgress
 				}));
 				console.log('Resuming interrupted grouping process...');
 			} else {
-				// No work to resume, clear saved state
 				localStorage.removeItem('lensCleanerProcessingState');
 			}
 		}
@@ -170,41 +170,20 @@ export async function initializeApp() {
 	}
 }
 
-// Refresh all data from database
+// Refresh all data from database (STATS ONLY - no arrays!)
 export async function refreshData() {
 	try {
+		// Only load stats, not photos/groups arrays
 		const stats = await db.getStats();
-		const groups = await db.getAllGroups();
-		const photos = await db.getAllPhotos();
-
-		// Update selection count from IndexedDB
 		const selectedCount = await db.getSelectedPhotosCount();
 
-		// Check if there are AI-suggested photos and auto-select them
-		const aiSuggestedPhotos = photos.filter((p) => p.aiSuggestionReason);
-		if (aiSuggestedPhotos.length > 0) {
-			// Add AI suggestions to IndexedDB selection
-			for (const photo of aiSuggestedPhotos) {
-				await db.selectPhoto(photo.id);
-			}
-			// Update count after adding AI suggestions
-			const newSelectedCount = await db.getSelectedPhotosCount();
-			appStore.update((state) => ({
-				...state,
-				stats,
-				groups,
-				photos,
-				selectedPhotosCount: newSelectedCount
-			}));
-		} else {
-			appStore.update((state) => ({
-				...state,
-				stats,
-				groups,
-				photos,
-				selectedPhotosCount: selectedCount
-			}));
-		}
+		appStore.update((state) => ({
+			...state,
+			stats,
+			selectedPhotosCount: selectedCount
+		}));
+
+		console.log('Data refreshed:', stats);
 	} catch (error) {
 		console.error('Error refreshing data:', error);
 		throw error;
@@ -215,7 +194,6 @@ export async function refreshData() {
 export async function calculateEmbeddings() {
 	const savedProgress = getSavedProcessingState();
 
-	// Check if we're resuming
 	const isResuming = savedProgress?.type === 'embedding' && savedProgress.isProcessing;
 	const originalTotal = savedProgress?.originalTotal;
 	const alreadyProcessed = savedProgress?.current || 0;
@@ -251,10 +229,9 @@ export async function calculateEmbeddings() {
 			await embeddingsProcessor.initialize();
 		}
 
-		// Get photos without embeddings (these are the remaining photos to process)
+		// Get photos without embeddings
 		const photos = await db.getPhotosWithoutEmbeddings();
 
-		// If resuming, use original total; otherwise use current count
 		const totalToShow = originalTotal || photos.length;
 		const currentProcessed = isResuming ? alreadyProcessed : 0;
 
@@ -296,13 +273,11 @@ export async function calculateEmbeddings() {
 			return alreadyProcessed;
 		}
 
-		// Process all remaining photos (starting from 0 in the filtered list)
+		// Process all remaining photos
 		let processed = currentProcessed;
 		for (const photo of photos) {
 			try {
-				// Convert blob to data URL for embedding calculation
 				const dataUrl = await blobToDataUrl(photo.blob);
-				// Remove data:image/...;base64, prefix to get just the base64 string
 				const base64 = dataUrl.split(',')[1];
 
 				const embedding = await embeddingsProcessor.calculateEmbedding(base64);
@@ -366,7 +341,7 @@ export async function calculateEmbeddings() {
 	}
 }
 
-// Group photos
+// Group photos using LSH
 export async function groupPhotos() {
 	const state = get(appStore);
 	const savedProgress = getSavedProcessingState();
@@ -396,85 +371,21 @@ export async function groupPhotos() {
 	);
 
 	try {
-		// Initialize processor if needed
-		if (!groupingProcessor) {
-			groupingProcessor = new GroupingProcessor();
-		}
-
-		// Get all photos with embeddings (already sorted by dateTaken from database)
-		const photos = await db.getAllPhotos();
-		const photosWithEmbeddings = photos.filter((p) => p.hasEmbedding);
-
-		if (photosWithEmbeddings.length === 0) {
-			appStore.update((s) => ({
-				...s,
-				processingProgress: {
-					isProcessing: false,
-					type: null,
-					current: 0,
-					total: 0,
-					message: ''
-				}
-			}));
-			localStorage.removeItem('lensCleanerProcessingState');
-			return 0;
-		}
-
-		// If resuming and groups exist, clear them first to avoid duplicates
-		// (This happens if grouping was interrupted after some groups were saved)
-		if (isResuming) {
-			const stats = await db.getStats();
-			if (stats.totalGroups > 0) {
-				console.log('Clearing existing groups before resuming...');
-				await db.clearGroups();
-				await refreshData();
-			}
-		}
-
-		// Use original total if resuming, otherwise use current count
-		const totalToShow = originalTotal || photosWithEmbeddings.length;
-		const currentProcessed = isResuming ? alreadyProcessed : 0;
-
-		// Update total count
-		appStore.update((s) => ({
-			...s,
-			processingProgress: {
-				...s.processingProgress,
-				total: totalToShow,
-				current: currentProcessed,
-				message: isResuming
-					? `Resuming: ${totalToShow - currentProcessed} photos remaining...`
-					: `Starting to group ${photosWithEmbeddings.length} photos...`
-			}
-		}));
-		saveProcessingState(
-			{
-				isProcessing: true,
-				type: 'grouping',
-				current: currentProcessed,
-				total: totalToShow,
-				message: isResuming
-					? `Resuming: ${totalToShow - currentProcessed} photos remaining...`
-					: `Starting to group ${photosWithEmbeddings.length} photos...`
+		// Use LSH-based grouper (O(n log n) instead of O(n²))
+		const grouper = new LSHPhotoGrouper({
+			similarityThreshold: state.settings.similarityThreshold,
+			timeWindowMinutes: state.settings.timeWindowMinutes,
+			batchSize: 1000, // Process 1000 embeddings per batch
+			lshConfig: {
+				numHashFunctions: 16,
+				numHashTables: 4
 			},
-			totalToShow
-		);
-
-		// Get all embeddings
-		const embeddings = await db.getAllEmbeddings();
-		const embeddingMap = new Map(embeddings.map((e) => [e.photoId, e.embedding]));
-
-		// Group photos with progress callback
-		const groups = await groupingProcessor.groupSimilarPhotosBatched(
-			photosWithEmbeddings,
-			embeddingMap,
-			state.settings.similarityThreshold,
-			state.settings.timeWindowMinutes,
-			async (progress) => {
-				// Save groups incrementally as they're found (for resumability)
-				// Note: The algorithm returns all groups at the end, but we save progress
-				// so if interrupted, we can restart cleanly
-				const message = `Processed ${progress.photosProcessed}/${progress.totalPhotos} photos • Found ${progress.groupsFound} groups`;
+			onProgress: async (progress) => {
+				const message = progress.phase === 'building_index'
+					? progress.message
+					: progress.phase === 'finding_duplicates'
+					? `Found ${progress.groupsFound} groups • Processed ${progress.photosProcessed}/${progress.totalPhotos} photos`
+					: `Saving ${progress.groupsFound} groups to database...`;
 
 				appStore.update((s) => ({
 					...s,
@@ -483,7 +394,8 @@ export async function groupPhotos() {
 						type: 'grouping',
 						current: progress.photosProcessed,
 						total: progress.totalPhotos,
-						message: message
+						message,
+						phase: progress.phase
 					}
 				}));
 
@@ -493,19 +405,16 @@ export async function groupPhotos() {
 						type: 'grouping',
 						current: progress.photosProcessed,
 						total: progress.totalPhotos,
-						message: message
+						message,
+						phase: progress.phase
 					},
-					totalToShow
+					originalTotal || progress.totalPhotos
 				);
-			},
-			50 // batch size
-		);
+			}
+		});
 
-		// Store groups in database (all at once at the end)
-		// If resuming, we already cleared existing groups above
-		for (const group of groups) {
-			await db.createGroup(group.photoIds, group.avgSimilarity);
-		}
+		// Groups are saved to database by grouper
+		const groups = await grouper.groupPhotos();
 
 		await db.setMetadata('lastGroupingTime', Date.now());
 		await db.setMetadata('totalGroups', groups.length);
@@ -548,15 +457,16 @@ export async function clearAllData() {
 		localStorage.removeItem('lensCleanerProcessingState');
 		appStore.update((s) => ({
 			...s,
-			photos: [],
-			groups: [],
-			selectedPhotosCount: 0,
 			stats: {
 				totalPhotos: 0,
 				photosWithEmbeddings: 0,
 				totalGroups: 0,
-				photosInGroups: 0
+				photosInGroups: 0,
+				ungroupedWithEmbeddings: 0,
+				selectedPhotos: 0,
+				lastUpdated: Date.now()
 			},
+			selectedPhotosCount: 0,
 			processingProgress: {
 				isProcessing: false,
 				type: null,
@@ -603,16 +513,12 @@ export async function deleteFromGooglePhotos() {
 	}
 
 	try {
-		// Create a new tab with Google Photos albums page
 		const tab = await chrome.tabs.create({
 			url: 'https://photos.google.com/albums',
 			active: true
 		});
 
-		// Wait for tab to be created
 		if (tab.id) {
-			// Send message to service worker to initiate deletion workflow
-			// NOTE: We don't pass photoIds anymore - service worker will fetch them from IndexedDB
 			await chrome.runtime.sendMessage({
 				action: 'initiateDeletion',
 				tabId: tab.id
@@ -635,23 +541,30 @@ export async function deleteGroup(groupId: string) {
 	}
 }
 
-// Check if a photo is selected (helper for UI components)
+// Check if a photo is selected
 export async function isPhotoSelected(photoId: string): Promise<boolean> {
 	return await db.isPhotoSelected(photoId);
 }
 
-// Auto-select photos with AI suggestions
+// Auto-select photos with AI suggestions (streams in batches)
 async function autoSelectAISuggestedPhotos() {
-	const photos = await db.getAllPhotos();
-	const aiSuggestedPhotos = photos.filter((p) => p.aiSuggestionReason);
+	let foundAnyAI = false;
 
-	if (aiSuggestedPhotos.length > 0) {
-		for (const photo of aiSuggestedPhotos) {
-			await db.selectPhoto(photo.id);
+	await db.forEachPhotoBatch(async (batch) => {
+		const aiSuggestedPhotos = batch.filter(p => p.aiSuggestionReason);
+
+		if (aiSuggestedPhotos.length > 0) {
+			foundAnyAI = true;
+			for (const photo of aiSuggestedPhotos) {
+				await db.selectPhoto(photo.id);
+			}
 		}
+	}, 500);
+
+	if (foundAnyAI) {
 		const selectedCount = await db.getSelectedPhotosCount();
 		appStore.update((state) => ({ ...state, selectedPhotosCount: selectedCount }));
-		console.log(`Auto-selected ${aiSuggestedPhotos.length} AI-suggested photos`);
+		console.log('Auto-selected AI-suggested photos');
 	}
 }
 
@@ -671,8 +584,7 @@ export async function togglePhotoSelection(photoId: string) {
 
 // Select all photos in a group
 export async function selectAllInGroup(groupId: string) {
-	const state = get(appStore);
-	const group = state.groups.find((g) => g.id === groupId);
+	const group = await db.getGroup(groupId);
 	if (!group) return;
 
 	for (const photoId of group.photoIds) {
@@ -728,9 +640,13 @@ function blobToDataUrl(blob: Blob): Promise<string> {
 	});
 }
 
-// Derived stores
+// Derived stores (for UI components that still need arrays)
+// These load batches on demand, not everything at once
 export const filteredGroups = derived(appStore, ($appStore) => {
-	const filtered = $appStore.groups.filter((g) => g.photoIds.length >= $appStore.minGroupSize);
-
-	return filtered;
+	// UI components should load groups in batches using db.getGroupsBatch()
+	// This derived store is now just for the filter criteria
+	return {
+		minGroupSize: $appStore.minGroupSize,
+		sortBy: $appStore.sortBy
+	};
 });
