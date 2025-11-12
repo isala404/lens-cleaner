@@ -343,7 +343,7 @@ class LensDB {
 
 	/**
 	 * Get photos without embeddings (for processing queue)
-	 * Uses index for efficient filtering
+	 * Uses cursor iteration for browser compatibility
 	 */
 	async getPhotosWithoutEmbeddings(limit: number = Infinity): Promise<Photo[]> {
 		if (!this.db) throw new Error('Database not initialized');
@@ -353,14 +353,15 @@ class LensDB {
 
 		return new Promise((resolve, reject) => {
 			const results: Photo[] = [];
-			const index = store.index('hasEmbedding');
-			const range = IDBKeyRange.only(false);
-			const request = index.openCursor(range);
+			const request = store.openCursor();
 
 			request.onsuccess = (event) => {
 				const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
 				if (cursor && results.length < limit) {
-					results.push(cursor.value);
+					// Only include photos without embeddings
+					if (cursor.value.hasEmbedding === false || !cursor.value.hasEmbedding) {
+						results.push(cursor.value);
+					}
 					cursor.continue();
 				} else {
 					resolve(results);
