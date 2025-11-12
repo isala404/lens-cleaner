@@ -1,12 +1,26 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import type { Photo } from '../lib/db';
 	import { appStore, isPhotoSelected } from '../stores/appStore';
 	import { SvelteMap } from 'svelte/reactivity';
+	import db from '../lib/db';
 
-	export let photos: Photo[];
+	export let photos: Photo[] = []; // For static lists (e.g., within groups)
 	export let getCachedBlobUrl: (photo: Photo) => string;
 	export let selectable = false;
 	export let onToggleSelection: ((photoId: string) => void) | undefined = undefined;
+
+	// Pagination props (optional - if provided, will paginate from database)
+	export let totalPhotos: number | undefined = undefined;
+	export let enablePagination = false;
+
+	const BATCH_SIZE = 100; // Load 100 photos at a time
+	const INITIAL_LOAD = 200; // Load 200 initially
+
+	let displayPhotos: Photo[] = photos;
+	let loadedCount = 0;
+	let isLoading = false;
+	let scrollContainer: HTMLElement | null = null;
 
 	let hoveredPhotoId: string | null = null;
 	// Track selection state for each photo
@@ -14,18 +28,69 @@
 	// Track popover positioning for each photo
 	let popoverPositions: SvelteMap<string, { top: boolean; right: boolean }> = new SvelteMap();
 
+	// Pagination mode: load photos from database
+	onMount(async () => {
+		if (enablePagination && totalPhotos !== undefined) {
+			await loadMore(INITIAL_LOAD);
+			setupScrollListener();
+		} else {
+			// Static mode: use photos prop
+			displayPhotos = photos;
+			loadSelectionStates();
+		}
+	});
+
+	async function loadMore(count: number) {
+		if (!enablePagination || totalPhotos === undefined) return;
+		if (isLoading || loadedCount >= totalPhotos) return;
+
+		isLoading = true;
+		try {
+			const batch = await db.getPhotosBatch(loadedCount, count);
+			displayPhotos = [...displayPhotos, ...batch];
+			loadedCount += batch.length;
+			await loadSelectionStates();
+		} finally {
+			isLoading = false;
+		}
+	}
+
+	function setupScrollListener() {
+		const checkScroll = () => {
+			if (!scrollContainer) return;
+			const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
+			// Load more when 80% scrolled
+			if (scrollTop + clientHeight > scrollHeight * 0.8 && !isLoading) {
+				loadMore(BATCH_SIZE);
+			}
+		};
+
+		// Find scroll container (retry a few times if not ready)
+		let retries = 0;
+		const findContainer = setInterval(() => {
+			scrollContainer = document.querySelector('.photo-grid-container');
+			if (scrollContainer || retries++ > 10) {
+				clearInterval(findContainer);
+				if (scrollContainer) {
+					scrollContainer.addEventListener('scroll', checkScroll);
+				}
+			}
+		}, 100);
+	}
+
 	// Load selection state for all photos
 	async function loadSelectionStates() {
 		const states = new SvelteMap<string, boolean>();
-		for (const photo of photos) {
+		for (const photo of displayPhotos) {
 			const selected = await isPhotoSelected(photo.id);
 			states.set(photo.id, selected);
 		}
 		photoSelectionState = states;
 	}
 
-	// Reload selection states when photos change
-	$: if (photos) {
+	// Reload selection states when photos change (static mode)
+	$: if (!enablePagination && photos) {
+		displayPhotos = photos;
 		loadSelectionStates();
 	}
 
@@ -93,8 +158,9 @@
 	}
 </script>
 
-<div class="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-4">
-	{#each photos as photo (photo.id)}
+<div class="photo-grid-container {enablePagination ? 'h-full overflow-y-auto' : ''}">
+	<div class="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-4">
+		{#each displayPhotos as photo (photo.id)}
 		{@const isSelected = photoSelectionState.get(photo.id) || false}
 		{#if selectable && onToggleSelection}
 			<div class="relative">
@@ -225,5 +291,20 @@
 				{/if}
 			</div>
 		{/if}
-	{/each}
+		{/each}
+	</div>
+
+	<!-- Loading indicator (pagination mode) -->
+	{#if enablePagination && isLoading}
+		<div class="flex justify-center p-8">
+			<div class="h-8 w-8 animate-spin rounded-full border-4 border-gray-300 border-t-black"></div>
+		</div>
+	{/if}
+
+	<!-- All loaded message (pagination mode) -->
+	{#if enablePagination && totalPhotos !== undefined && loadedCount >= totalPhotos && displayPhotos.length > 0}
+		<div class="p-4 text-center text-sm text-gray-500">
+			All {totalPhotos} photos loaded
+		</div>
+	{/if}
 </div>

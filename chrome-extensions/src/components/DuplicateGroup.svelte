@@ -10,7 +10,7 @@
 </script>
 
 <div
-	class="organic-texture cozy-card shadow-brutalist hover:shadow-brutalist-lg p-6 transition-all hover:border-black"
+	class="group-container organic-texture cozy-card shadow-brutalist hover:shadow-brutalist-lg p-6 transition-all hover:border-black"
 >
 	<div class="mb-5 flex items-center justify-between">
 		<h3 class="text-2xl font-black text-black">
@@ -25,3 +25,10 @@
 	</div>
 	<PhotoGrid {photos} {getCachedBlobUrl} selectable={true} {onToggleSelection} />
 </div>
+
+<style>
+	.group-container {
+		content-visibility: auto;
+		contain-intrinsic-size: 0 400px; /* Approximate height for lazy rendering */
+	}
+</style>

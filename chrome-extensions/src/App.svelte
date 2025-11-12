@@ -693,8 +693,8 @@
 		}
 	}
 
-	function handleSaveSettings() {
-		updateSettings({
+	async function handleSaveSettings() {
+		await updateSettings({
 			similarityThreshold: editingSettings.similarityThreshold,
 			timeWindowMinutes: editingSettings.timeWindowMinutes
 		});
@@ -879,6 +879,8 @@
 				onRetryAutoSelect={handleRetryAutoSelect}
 				onRefundAutoSelect={handleRefundAutoSelect}
 				{refundLoading}
+				enableGroupPagination={true}
+				totalGroupsCount={$appStore.stats.totalGroups}
 			/>
 		{/if}
 	</main>

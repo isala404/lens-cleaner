@@ -124,11 +124,20 @@ export async function initializeApp() {
 		console.log('Database initialized');
 		await refreshData();
 
-		// Load settings from localStorage
-		const savedSettings = localStorage.getItem('lensCleanerSettings');
+		// Load settings from IndexedDB (migrated from localStorage)
+		const savedSettings = (await db.getMetadata('settings')) as Settings | undefined;
 		if (savedSettings) {
-			const settings = JSON.parse(savedSettings);
-			appStore.update((state) => ({ ...state, settings }));
+			appStore.update((state) => ({ ...state, settings: savedSettings }));
+		} else {
+			// Migrate from localStorage if exists
+			const localStorageSettings = localStorage.getItem('lensCleanerSettings');
+			if (localStorageSettings) {
+				const settings = JSON.parse(localStorageSettings);
+				await db.setMetadata('settings', settings);
+				appStore.update((state) => ({ ...state, settings }));
+				// Clean up old localStorage
+				localStorage.removeItem('lensCleanerSettings');
+			}
 		}
 
 		// Update selection count from IndexedDB
@@ -173,38 +182,29 @@ export async function initializeApp() {
 // Refresh all data from database
 export async function refreshData() {
 	try {
-		const stats = await db.getStats();
-		const groups = await db.getAllGroups();
-		const photos = await db.getAllPhotos();
+		const stats = await db.getStats(); // Now uses counters - fast!
+
+		// Don't load all groups - UI will paginate them
+		// Load only first batch for preview (optional - can be empty)
+		const groups = await db.getGroupsBatch(0, 50);
+
+		// Don't load all photos - UI will paginate
+		const photos: Photo[] = [];
 
 		// Update selection count from IndexedDB
 		const selectedCount = await db.getSelectedPhotosCount();
 
 		// Check if there are AI-suggested photos and auto-select them
-		const aiSuggestedPhotos = photos.filter((p) => p.aiSuggestionReason);
-		if (aiSuggestedPhotos.length > 0) {
-			// Add AI suggestions to IndexedDB selection
-			for (const photo of aiSuggestedPhotos) {
-				await db.selectPhoto(photo.id);
-			}
-			// Update count after adding AI suggestions
-			const newSelectedCount = await db.getSelectedPhotosCount();
-			appStore.update((state) => ({
-				...state,
-				stats,
-				groups,
-				photos,
-				selectedPhotosCount: newSelectedCount
-			}));
-		} else {
-			appStore.update((state) => ({
-				...state,
-				stats,
-				groups,
-				photos,
-				selectedPhotosCount: selectedCount
-			}));
-		}
+		// Note: We need to check this differently since we don't load all photos
+		// We'll handle this during photo pagination or in a separate method
+		// For now, just update the state
+		appStore.update((state) => ({
+			...state,
+			stats,
+			groups,
+			photos, // Empty - UI loads on demand
+			selectedPhotosCount: selectedCount
+		}));
 	} catch (error) {
 		console.error('Error refreshing data:', error);
 		throw error;
@@ -508,7 +508,7 @@ export async function groupPhotos() {
 		}
 
 		await db.setMetadata('lastGroupingTime', Date.now());
-		await db.setMetadata('totalGroups', groups.length);
+		// Note: groups:count counter is automatically updated by createGroup()
 		await refreshData();
 
 		appStore.update((s) => ({
@@ -641,7 +641,15 @@ export async function isPhotoSelected(photoId: string): Promise<boolean> {
 }
 
 // Auto-select photos with AI suggestions
+// Note: This loads all photos, but only during initialization after auto-select completion
+// For large datasets, we could optimize by adding a metadata flag to skip this check
 async function autoSelectAISuggestedPhotos() {
+	// Check if there are any AI suggestions via metadata first
+	const hasAISuggestions = (await db.getMetadata('hasAISuggestions')) as boolean | undefined;
+	if (hasAISuggestions === false) {
+		return; // Skip if we know there are no AI suggestions
+	}
+
 	const photos = await db.getAllPhotos();
 	const aiSuggestedPhotos = photos.filter((p) => p.aiSuggestionReason);
 
@@ -652,6 +660,9 @@ async function autoSelectAISuggestedPhotos() {
 		const selectedCount = await db.getSelectedPhotosCount();
 		appStore.update((state) => ({ ...state, selectedPhotosCount: selectedCount }));
 		console.log(`Auto-selected ${aiSuggestedPhotos.length} AI-suggested photos`);
+		await db.setMetadata('hasAISuggestions', true);
+	} else {
+		await db.setMetadata('hasAISuggestions', false);
 	}
 }
 
@@ -693,12 +704,11 @@ export async function clearSelection() {
 }
 
 // Update settings
-export function updateSettings(settings: Partial<Settings>) {
-	appStore.update((state) => {
-		const newSettings = { ...state.settings, ...settings };
-		localStorage.setItem('lensCleanerSettings', JSON.stringify(newSettings));
-		return { ...state, settings: newSettings };
-	});
+export async function updateSettings(settings: Partial<Settings>) {
+	const state = get(appStore);
+	const newSettings = { ...state.settings, ...settings };
+	await db.setMetadata('settings', newSettings);
+	appStore.update((state) => ({ ...state, settings: newSettings }));
 }
 
 // Update view mode

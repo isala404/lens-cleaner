@@ -55,8 +55,10 @@ class LensDB {
 			const request = indexedDB.open(DB_NAME, DB_VERSION);
 
 			request.onerror = () => reject(request.error);
-			request.onsuccess = () => {
+			request.onsuccess = async () => {
 				this.db = request.result;
+				// Initialize counters if this is the first run
+				await this.initializeCounters();
 				resolve(this.db);
 			};
 
@@ -105,6 +107,55 @@ class LensDB {
 	}
 
 	/**
+	 * Initialize counters on first run or if counters are missing
+	 * This method counts existing data and sets up counters
+	 */
+	async initializeCounters(): Promise<void> {
+		const photosCount = await this.getCounter('photos:count');
+		const embeddingsCount = await this.getCounter('embeddings:count');
+		const groupsCount = await this.getCounter('groups:count');
+
+		// Only initialize if all counters are 0 (first run or migration)
+		if (photosCount === 0 && embeddingsCount === 0 && groupsCount === 0) {
+			// Check if there's actually any data to count
+			const hasData = await this.hasAnyData();
+			if (hasData) {
+				console.log('Initializing counters from existing data...');
+				// Count existing data (one-time operation)
+				const [allPhotos, allEmbeddings, allGroups] = await Promise.all([
+					this.getAllPhotos(),
+					this.getAllEmbeddings(),
+					this.getAllGroups()
+				]);
+
+				await this.setMetadata('photos:count', allPhotos.length);
+				await this.setMetadata('embeddings:count', allEmbeddings.length);
+				await this.setMetadata('groups:count', allGroups.length);
+
+				console.log(
+					`Counters initialized: ${allPhotos.length} photos, ${allEmbeddings.length} embeddings, ${allGroups.length} groups`
+				);
+			}
+		}
+	}
+
+	/**
+	 * Check if database has any data (for counter initialization)
+	 */
+	private async hasAnyData(): Promise<boolean> {
+		if (!this.db) return false;
+
+		return new Promise((resolve, reject) => {
+			const transaction = this.db!.transaction(['photos'], 'readonly');
+			const store = transaction.objectStore('photos');
+			const request = store.count();
+
+			request.onsuccess = () => resolve(request.result > 0);
+			request.onerror = () => reject(request.error);
+		});
+	}
+
+	/**
 	 * Add a photo to the database
 	 */
 	async addPhoto(photo: Partial<Photo> & { id: string; blob: Blob }): Promise<Photo> {
@@ -127,7 +178,10 @@ class LensDB {
 
 		return new Promise((resolve, reject) => {
 			const request = store.put(photoData);
-			request.onsuccess = () => resolve(photoData);
+			request.onsuccess = async () => {
+				await this.incrementCounter('photos:count', 1);
+				resolve(photoData);
+			};
 			request.onerror = () => reject(request.error);
 		});
 	}
@@ -161,7 +215,9 @@ class LensDB {
 			});
 		});
 
-		return Promise.all(promises);
+		const results = await Promise.all(promises);
+		await this.incrementCounter('photos:count', photos.length);
+		return results;
 	}
 
 	/**
@@ -268,16 +324,17 @@ class LensDB {
 		return new Promise((resolve, reject) => {
 			const embeddingRequest = embeddingsStore.put(embeddingData);
 
-			embeddingRequest.onsuccess = () => {
+			embeddingRequest.onsuccess = async () => {
 				// Update photo to mark it has an embedding
 				const photoRequest = photosStore.get(photoId);
 
-				photoRequest.onsuccess = () => {
+				photoRequest.onsuccess = async () => {
 					const photo = photoRequest.result;
 					if (photo) {
 						photo.hasEmbedding = true;
 						photosStore.put(photo);
 					}
+					await this.incrementCounter('embeddings:count', 1);
 					resolve(embeddingData);
 				};
 
@@ -366,7 +423,10 @@ class LensDB {
 				});
 
 				Promise.all(updatePromises)
-					.then(() => resolve(group))
+					.then(async () => {
+						await this.incrementCounter('groups:count', 1);
+						resolve(group);
+					})
 					.catch(reject);
 			};
 
@@ -474,9 +534,12 @@ class LensDB {
 				});
 
 				Promise.all(updatePromises)
-					.then(() => {
+					.then(async () => {
 						const deleteRequest = groupsStore.delete(groupId);
-						deleteRequest.onsuccess = () => resolve();
+						deleteRequest.onsuccess = async () => {
+							await this.incrementCounter('groups:count', -1);
+							resolve();
+						};
 						deleteRequest.onerror = () => reject(deleteRequest.error);
 					})
 					.catch(reject);
@@ -496,27 +559,45 @@ class LensDB {
 		const photosStore = transaction.objectStore('photos');
 		const embeddingsStore = transaction.objectStore('embeddings');
 
+		let deletedPhotosCount = 0;
+		let deletedEmbeddingsCount = 0;
+
 		const promises = photoIds.map((photoId) => {
 			return new Promise<void>((resolve, reject) => {
-				const deletePhoto = photosStore.delete(photoId);
-				const deleteEmbedding = embeddingsStore.delete(photoId);
+				const getPhoto = photosStore.get(photoId);
+				getPhoto.onsuccess = () => {
+					const photo = getPhoto.result;
+					const hasEmbedding = photo?.hasEmbedding || false;
 
-				Promise.all([
-					new Promise((res, rej) => {
-						deletePhoto.onsuccess = () => res(null);
-						deletePhoto.onerror = () => rej(deletePhoto.error);
-					}),
-					new Promise((res, rej) => {
-						deleteEmbedding.onsuccess = () => res(null);
-						deleteEmbedding.onerror = () => rej(deleteEmbedding.error);
-					})
-				])
-					.then(() => resolve())
-					.catch(reject);
+					const deletePhoto = photosStore.delete(photoId);
+					const deleteEmbedding = embeddingsStore.delete(photoId);
+
+					Promise.all([
+						new Promise((res, rej) => {
+							deletePhoto.onsuccess = () => {
+								deletedPhotosCount++;
+								res(null);
+							};
+							deletePhoto.onerror = () => rej(deletePhoto.error);
+						}),
+						new Promise((res, rej) => {
+							deleteEmbedding.onsuccess = () => {
+								if (hasEmbedding) deletedEmbeddingsCount++;
+								res(null);
+							};
+							deleteEmbedding.onerror = () => rej(deleteEmbedding.error);
+						})
+					])
+						.then(() => resolve())
+						.catch(reject);
+				};
+				getPhoto.onerror = () => reject(getPhoto.error);
 			});
 		});
 
 		await Promise.all(promises);
+		await this.incrementCounter('photos:count', -deletedPhotosCount);
+		await this.incrementCounter('embeddings:count', -deletedEmbeddingsCount);
 	}
 
 	/**
@@ -549,28 +630,161 @@ class LensDB {
 	}
 
 	/**
-	 * Get database statistics
+	 * Counter methods for stats (efficient counting without loading all data)
+	 */
+	async incrementCounter(key: string, amount: number = 1): Promise<number> {
+		const current = ((await this.getMetadata(key)) as number) || 0;
+		const newValue = current + amount;
+		await this.setMetadata(key, newValue);
+		return newValue;
+	}
+
+	async getCounter(key: string): Promise<number> {
+		return ((await this.getMetadata(key)) as number) || 0;
+	}
+
+	/**
+	 * Get photos in batches (pagination)
+	 * @param offset - Number of photos to skip
+	 * @param limit - Maximum number of photos to return
+	 * @returns Photos sorted by timestamp (newest first)
+	 */
+	async getPhotosBatch(offset: number, limit: number): Promise<Photo[]> {
+		if (!this.db) throw new Error('Database not initialized');
+
+		const transaction = this.db.transaction(['photos'], 'readonly');
+		const store = transaction.objectStore('photos');
+		const index = store.index('timestamp');
+
+		return new Promise((resolve, reject) => {
+			const results: Photo[] = [];
+			let skipped = 0;
+			const request = index.openCursor(null, 'prev'); // Newest first
+
+			request.onsuccess = (event) => {
+				const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
+				if (!cursor || results.length >= limit) {
+					resolve(results);
+					return;
+				}
+
+				if (skipped < offset) {
+					skipped++;
+					cursor.continue();
+					return;
+				}
+
+				results.push(cursor.value);
+				cursor.continue();
+			};
+
+			request.onerror = () => reject(request.error);
+		});
+	}
+
+	/**
+	 * Get groups in batches (pagination)
+	 * @param offset - Number of groups to skip
+	 * @param limit - Maximum number of groups to return
+	 * @returns Groups sorted by timestamp (newest first)
+	 */
+	async getGroupsBatch(offset: number, limit: number): Promise<Group[]> {
+		if (!this.db) throw new Error('Database not initialized');
+
+		const transaction = this.db.transaction(['groups'], 'readonly');
+		const store = transaction.objectStore('groups');
+		const index = store.index('timestamp');
+
+		return new Promise((resolve, reject) => {
+			const results: Group[] = [];
+			let skipped = 0;
+			const request = index.openCursor(null, 'prev'); // Newest first
+
+			request.onsuccess = (event) => {
+				const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
+				if (!cursor || results.length >= limit) {
+					resolve(results);
+					return;
+				}
+
+				if (skipped < offset) {
+					skipped++;
+					cursor.continue();
+					return;
+				}
+
+				results.push(cursor.value);
+				cursor.continue();
+			};
+
+			request.onerror = () => reject(request.error);
+		});
+	}
+
+	/**
+	 * Get photos by IDs (for groups)
+	 * @param photoIds - Array of photo IDs to fetch
+	 * @returns Array of photos
+	 */
+	async getPhotosByIds(photoIds: string[]): Promise<Photo[]> {
+		const photos: Photo[] = [];
+		for (const id of photoIds) {
+			const photo = await this.getPhoto(id);
+			if (photo) photos.push(photo);
+		}
+		return photos;
+	}
+
+	/**
+	 * Get database statistics (using counters for efficiency)
 	 */
 	async getStats(): Promise<Stats> {
-		const [photos, embeddings, groups] = await Promise.all([
-			this.getAllPhotos(),
-			this.getAllEmbeddings(),
-			this.getAllGroups()
-		]);
+		const totalPhotos = await this.getCounter('photos:count');
+		const photosWithEmbeddings = await this.getCounter('embeddings:count');
+		const totalGroups = await this.getCounter('groups:count');
+
+		// Count photos in groups (only if needed)
+		const photosInGroups = await this.countPhotosInGroups();
 
 		const lastScrapeTime = (await this.getMetadata('lastScrapeTime')) as number | undefined;
 		const lastEmbeddingTime = (await this.getMetadata('lastEmbeddingTime')) as number | undefined;
 		const lastGroupingTime = (await this.getMetadata('lastGroupingTime')) as number | undefined;
 
 		return {
-			totalPhotos: photos.length,
-			photosWithEmbeddings: embeddings.length,
-			totalGroups: groups.length,
-			photosInGroups: photos.filter((p) => p.groupId).length,
+			totalPhotos,
+			photosWithEmbeddings,
+			totalGroups,
+			photosInGroups,
 			lastScrapeTime,
 			lastEmbeddingTime,
 			lastGroupingTime
 		};
+	}
+
+	/**
+	 * Helper to count photos in groups (can be slow, but only called for stats)
+	 */
+	private async countPhotosInGroups(): Promise<number> {
+		if (!this.db) throw new Error('Database not initialized');
+
+		return new Promise((resolve, reject) => {
+			const transaction = this.db!.transaction(['groups'], 'readonly');
+			const store = transaction.objectStore('groups');
+			const request = store.openCursor();
+			let count = 0;
+
+			request.onsuccess = (event) => {
+				const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
+				if (cursor) {
+					count += cursor.value.photoIds.length;
+					cursor.continue();
+				} else {
+					resolve(count);
+				}
+			};
+
+			request.onerror = () => reject(request.error);
+		});
 	}
 
 	/**
@@ -587,6 +801,9 @@ class LensDB {
 			request.onsuccess = () => resolve();
 			request.onerror = () => reject(request.error);
 		});
+
+		// Reset counter
+		await this.setMetadata('groups:count', 0);
 
 		// Reset groupId on all photos
 		const photosStore = transaction.objectStore('photos');
@@ -620,6 +837,9 @@ class LensDB {
 			request.onsuccess = () => resolve();
 			request.onerror = () => reject(request.error);
 		});
+
+		// Reset counter
+		await this.setMetadata('embeddings:count', 0);
 
 		// Reset hasEmbedding flag on all photos
 		const photosStore = transaction.objectStore('photos');
@@ -659,7 +879,7 @@ class LensDB {
 			'selectedPhotos'
 		];
 
-		return Promise.all(
+		await Promise.all(
 			stores.map((storeName) => {
 				return new Promise<void>((resolve, reject) => {
 					const request = transaction.objectStore(storeName).clear();
@@ -667,7 +887,13 @@ class LensDB {
 					request.onerror = () => reject(request.error);
 				});
 			})
-		).then(() => undefined);
+		);
+
+		// Note: counters are stored in metadata, so they're already cleared above
+		// But we'll reinitialize them to 0 explicitly for clarity
+		await this.setMetadata('photos:count', 0);
+		await this.setMetadata('embeddings:count', 0);
+		await this.setMetadata('groups:count', 0);
 	}
 
 	/**
