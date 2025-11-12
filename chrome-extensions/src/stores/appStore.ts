@@ -12,7 +12,6 @@ import { GroupingProcessor } from '../lib/grouping';
 export interface Settings {
 	similarityThreshold: number;
 	timeWindowMinutes: number;
-	maxPhotos: number;
 }
 
 // Processing progress interface
@@ -50,8 +49,7 @@ const defaultState: AppState = {
 	selectedPhotosCount: 0,
 	settings: {
 		similarityThreshold: 0.406, // Default to 40.6% (70% in UI)
-		timeWindowMinutes: 60,
-		maxPhotos: 1000
+		timeWindowMinutes: 60
 	},
 	processingProgress: {
 		isProcessing: false,
@@ -254,7 +252,7 @@ export async function calculateEmbeddings() {
 		}
 
 		// Get photos without embeddings (these are the remaining photos to process)
-		const photos = await db.getPhotosWithoutEmbeddings(10000);
+		const photos = await db.getPhotosWithoutEmbeddings();
 
 		// If resuming, use original total; otherwise use current count
 		const totalToShow = originalTotal || photos.length;
@@ -660,13 +658,13 @@ async function autoSelectAISuggestedPhotos() {
 // Toggle photo selection
 export async function togglePhotoSelection(photoId: string) {
 	const isSelected = await db.isPhotoSelected(photoId);
-	
+
 	if (isSelected) {
 		await db.unselectPhoto(photoId);
 	} else {
 		await db.selectPhoto(photoId);
 	}
-	
+
 	const selectedCount = await db.getSelectedPhotosCount();
 	appStore.update((state) => ({ ...state, selectedPhotosCount: selectedCount }));
 }
@@ -680,7 +678,7 @@ export async function selectAllInGroup(groupId: string) {
 	for (const photoId of group.photoIds) {
 		await db.selectPhoto(photoId);
 	}
-	
+
 	const selectedCount = await db.getSelectedPhotosCount();
 	appStore.update((state) => ({ ...state, selectedPhotosCount: selectedCount }));
 }

@@ -1,5 +1,5 @@
 <script lang="ts">
-	export let status: 'uploading' | 'processing' | 'completed' | 'failed';
+	export let status: 'uploading' | 'processing' | 'completed' | 'failed' | 'tampered';
 	export let uploadProgress: number = 0; // 0-100
 	export let message: string = '';
 	export let canRetry: boolean = false;
@@ -67,6 +67,37 @@
 					</p>
 				</div>
 			</div>
+		</div>
+	{:else if status === 'tampered'}
+		<div class="bg-gradient-to-r from-yellow-100 to-red-100 p-6">
+			<div class="flex items-center gap-3">
+				<div class="flex h-12 w-12 items-center justify-center rounded-full bg-yellow-500 text-2xl">
+					⚠️
+				</div>
+				<div class="flex-1">
+					<h3 class="text-xl font-black text-black">Payment Amount Modified</h3>
+					<p class="text-sm font-semibold text-gray-700">
+						{message ||
+							'The payment amount was modified during checkout. Please contact support for assistance.'}
+					</p>
+				</div>
+			</div>
+
+			<div class="mt-4">
+				<a
+					href="mailto:support@tallisa.dev"
+					class="block w-full rounded-xl border-2 border-black bg-yellow-500 px-4 py-3 text-center font-bold text-white transition-colors hover:bg-yellow-600"
+				>
+					📧 Contact Support
+				</a>
+			</div>
+
+			<p class="mt-3 text-center text-xs text-gray-500">
+				Email <a
+					href="mailto:support@tallisa.dev"
+					class="font-semibold text-yellow-600 hover:underline">support@tallisa.dev</a
+				> to resolve this issue
+			</p>
 		</div>
 	{:else if status === 'failed'}
 		<div class="bg-gradient-to-r from-red-100 to-orange-100 p-6">

@@ -4,7 +4,7 @@
  */
 
 const DB_NAME = 'LensCleanerDB';
-const DB_VERSION = 3;
+const DB_VERSION = 1;
 
 export interface Photo {
 	id: string;
@@ -70,15 +70,6 @@ class LensDB {
 					photosStore.createIndex('dateTaken', 'dateTaken', { unique: false });
 					photosStore.createIndex('hasEmbedding', 'hasEmbedding', { unique: false });
 					photosStore.createIndex('groupId', 'groupId', { unique: false });
-				} else {
-					// Add dateTaken index if it doesn't exist (for existing databases)
-					const transaction = (event.target as IDBOpenDBRequest).transaction;
-					if (transaction) {
-						const photosStore = transaction.objectStore('photos');
-						if (!photosStore.indexNames.contains('dateTaken')) {
-							photosStore.createIndex('dateTaken', 'dateTaken', { unique: false });
-						}
-					}
 				}
 
 				// Embeddings store (separate for better performance)
@@ -97,19 +88,19 @@ class LensDB {
 					db.createObjectStore('metadata', { keyPath: 'key' });
 				}
 
-			// Auto-select jobs store (new in v2)
-			if (!db.objectStoreNames.contains('autoSelectJobs')) {
-				const jobsStore = db.createObjectStore('autoSelectJobs', { keyPath: 'jobId' });
-				jobsStore.createIndex('createdAt', 'createdAt', { unique: false });
-				jobsStore.createIndex('status', 'status', { unique: false });
-			}
+				// Auto-select jobs store
+				if (!db.objectStoreNames.contains('autoSelectJobs')) {
+					const jobsStore = db.createObjectStore('autoSelectJobs', { keyPath: 'jobId' });
+					jobsStore.createIndex('createdAt', 'createdAt', { unique: false });
+					jobsStore.createIndex('status', 'status', { unique: false });
+				}
 
-			// Selection state store (new in v3) - for scalable photo selection
-			if (!db.objectStoreNames.contains('selectedPhotos')) {
-				const selectedStore = db.createObjectStore('selectedPhotos', { keyPath: 'photoId' });
-				selectedStore.createIndex('selectedAt', 'selectedAt', { unique: false });
-			}
-		};
+				// Selection state store - for scalable photo selection
+				if (!db.objectStoreNames.contains('selectedPhotos')) {
+					const selectedStore = db.createObjectStore('selectedPhotos', { keyPath: 'photoId' });
+					selectedStore.createIndex('selectedAt', 'selectedAt', { unique: false });
+				}
+			};
 		});
 	}
 
@@ -224,7 +215,7 @@ class LensDB {
 	 * Note: Processing uses oldest first to maintain consistent order with processing queue
 	 * Using timestamp (number) instead of dateTaken (string) ensures correct chronological ordering
 	 */
-	async getPhotosWithoutEmbeddings(limit: number = 100): Promise<Photo[]> {
+	async getPhotosWithoutEmbeddings(limit: number = Infinity): Promise<Photo[]> {
 		if (!this.db) throw new Error('Database not initialized');
 
 		const transaction = this.db.transaction(['photos'], 'readonly');
@@ -659,7 +650,14 @@ class LensDB {
 			'readwrite'
 		);
 
-		const stores = ['photos', 'embeddings', 'groups', 'metadata', 'autoSelectJobs', 'selectedPhotos'];
+		const stores = [
+			'photos',
+			'embeddings',
+			'groups',
+			'metadata',
+			'autoSelectJobs',
+			'selectedPhotos'
+		];
 
 		return Promise.all(
 			stores.map((storeName) => {

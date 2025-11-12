@@ -11,14 +11,22 @@
 			onClose();
 		}
 	}
+
+	function handleBackdropKeydown(event: KeyboardEvent) {
+		if (event.key === 'Escape') {
+			onClose();
+		}
+	}
 </script>
 
 {#if show}
 	<div
 		class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
 		onclick={handleBackdropClick}
+		onkeydown={handleBackdropKeydown}
 		role="dialog"
 		aria-modal="true"
+		tabindex="0"
 	>
 		<div
 			class="shadow-brutalist-lg animate-slide-in relative w-full max-w-md rounded-2xl border-4 border-black bg-white p-8"

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Photo } from '../lib/db';
 	import { appStore, isPhotoSelected } from '../stores/appStore';
-	import { onMount } from 'svelte';
+	import { SvelteMap } from 'svelte/reactivity';
 
 	export let photos: Photo[];
 	export let getCachedBlobUrl: (photo: Photo) => string;
@@ -10,11 +10,13 @@
 
 	let hoveredPhotoId: string | null = null;
 	// Track selection state for each photo
-	let photoSelectionState: Map<string, boolean> = new Map();
+	let photoSelectionState: SvelteMap<string, boolean> = new SvelteMap();
+	// Track popover positioning for each photo
+	let popoverPositions: SvelteMap<string, { top: boolean; right: boolean }> = new SvelteMap();
 
 	// Load selection state for all photos
 	async function loadSelectionStates() {
-		const states = new Map<string, boolean>();
+		const states = new SvelteMap<string, boolean>();
 		for (const photo of photos) {
 			const selected = await isPhotoSelected(photo.id);
 			states.set(photo.id, selected);
@@ -68,6 +70,27 @@
 			photoSelectionState = photoSelectionState; // Trigger reactivity
 		}
 	}
+
+	function calculatePopoverPosition(photoId: string, event: MouseEvent) {
+		const button = event.currentTarget as HTMLElement;
+		const rect = button.getBoundingClientRect();
+		const popoverWidth = 200; // Estimated width
+		const popoverHeight = 40; // Estimated height
+
+		const spaceAbove = rect.top;
+		const spaceBelow = window.innerHeight - rect.bottom;
+		const spaceLeft = rect.left;
+		const spaceRight = window.innerWidth - rect.right;
+
+		const shouldPositionAbove = spaceBelow < popoverHeight && spaceAbove > popoverHeight;
+		const shouldPositionRight = spaceLeft < popoverWidth / 2 && spaceRight > popoverWidth;
+
+		popoverPositions.set(photoId, {
+			top: shouldPositionAbove,
+			right: shouldPositionRight
+		});
+		popoverPositions = popoverPositions; // Trigger reactivity
+	}
 </script>
 
 <div class="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-4">
@@ -83,7 +106,10 @@
 					class:hover:scale-105={true}
 					class:hover:shadow-brutalist={true}
 					onclick={() => handleToggleSelection(photo.id)}
-					onmouseenter={() => (hoveredPhotoId = photo.id)}
+					onmouseenter={(e) => {
+						hoveredPhotoId = photo.id;
+						calculatePopoverPosition(photo.id, e);
+					}}
 					onmouseleave={() => (hoveredPhotoId = null)}
 					type="button"
 				>
@@ -154,10 +180,17 @@
 
 				<!-- AI Suggestion Popover (shown on hover for AI-selected photos) -->
 				{#if photo.aiSuggestionReason && hoveredPhotoId === photo.id}
+					{@const position = popoverPositions.get(photo.id) || { top: false, right: false }}
 					<div
-						class="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 rounded-md border-2 border-black bg-white px-2 py-1 shadow-lg"
+						class={[
+							'pointer-events-none absolute z-50 w-64 rounded-md border-2 border-black bg-white px-3 py-2 shadow-lg',
+							!position.top ? 'bottom-full' : 'top-full',
+							position.right ? 'right-0' : 'left-1/2',
+							position.right ? 'translate-x-0' : '-translate-x-1/2',
+							!position.top ? 'mb-2' : 'mt-2'
+						].join(' ')}
 					>
-						<p class="text-xs font-semibold whitespace-nowrap text-gray-800">
+						<p class="text-xs leading-tight font-semibold text-gray-800">
 							{photo.aiSuggestionReason}
 						</p>
 					</div>

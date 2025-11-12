@@ -118,7 +118,6 @@ Access settings by clicking the ⚙️ icon:
 
 - **Similarity Threshold** (0.7-0.98): How similar photos must be to group together
 - **Time Window** (5-1440 minutes): Maximum time between photos in a group
-- **Max Photos** (10-10000): Limit for processing (affects performance)
 
 ### Advanced
 

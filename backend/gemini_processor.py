@@ -208,11 +208,9 @@ class GeminiProcessor:
                 "request": {
                     "contents": [{"parts": content_parts}],
                     "generation_config": {
-                        "thinkingConfig": {
-                            "thinkingBudget": 1024
-                        },
+                        "thinkingConfig": {"thinkingBudget": 1024},
                         "temperature": 0.5,
-                        "max_output_tokens": 6*1024,
+                        "max_output_tokens": 6 * 1024,
                         "responseMimeType": "application/json",
                         "responseSchema": BATCH_RESPONSE_SCHEMA,
                     },
@@ -234,8 +232,7 @@ class GeminiProcessor:
             uploaded_file = self.client.files.upload(
                 file=str(jsonl_path),
                 config=types.UploadFileConfig(
-                    display_name=f"lens-cleaner-{job_id}",
-                    mime_type="text/plain"
+                    display_name=f"lens-cleaner-{job_id}", mime_type="text/plain"
                 ),
             )
             return uploaded_file

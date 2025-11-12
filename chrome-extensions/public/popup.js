@@ -221,20 +221,39 @@ async function ensureContentScriptLoaded(tabId) {
  * Handle clearing all data
  */
 async function handleClearData() {
-	const confirmed = confirm(
-		'This will remove everything stored by Lens Cleaner.\n\n' +
-			'Think of it like clearing out your desk to start fresh.\n\n' +
-			"You'll need to scan your photos again from Google Photos.\n\n" +
-			'Is this what you want to do?'
-	);
+	// Check for auto-select data
+	const hasAutoSelectData = localStorage.getItem('autoSelectCheckoutId');
 
-	if (!confirmed) {
-		return;
+	let confirmMessage =
+		'This will remove everything stored by Lens Cleaner.\n\n' +
+		'Think of it like clearing out your desk to start fresh.\n\n' +
+		"You'll need to scan your photos again from Google Photos.";
+
+	if (hasAutoSelectData) {
+		confirmMessage +=
+			'\n\n⚠️ You have AI auto-select data that will be lost.\n' +
+			'You will need to pay again to use auto-select features.\n\n' +
+			'Type "I understand" to confirm you understand you will need to repay.';
+
+		const userConfirmation = prompt(confirmMessage);
+		if (userConfirmation !== 'I understand') {
+			return;
+		}
+	} else {
+		confirmMessage += '\n\nIs this what you want to do?';
+		const confirmed = confirm(confirmMessage);
+		if (!confirmed) {
+			return;
+		}
 	}
 
 	try {
 		await chrome.runtime.sendMessage({ action: 'clearAllData' });
 		hasScannedPhotos = false;
+
+		// Clear auto-select data from localStorage
+		localStorage.removeItem('autoSelectState');
+		localStorage.removeItem('autoSelectJobId');
 
 		// Update stats display immediately
 		document.getElementById('totalPhotos').textContent = '0';
@@ -326,7 +345,7 @@ async function startScan() {
 		const response = await chrome.tabs.sendMessage(currentTab.id, {
 			action: 'startScraping',
 			options: {
-				maxItems: 1000,
+				maxItems: Number.MAX_SAFE_INTEGER,
 				itemDelay: 100,
 				scrollDelay: 2000,
 				maxStaleScrolls: 5
