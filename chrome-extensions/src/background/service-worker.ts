@@ -5,14 +5,13 @@
 
 import db, { type Photo } from '../lib/db';
 import { EmbeddingsProcessor } from '../lib/embeddings';
-import { GroupingProcessor } from '../lib/grouping';
+import { LSHPhotoGrouper } from '../lib/grouping';
 
 // Import Transformers.js at the top level
 // import { pipeline } from '@huggingface/transformers';
 
 // Initialize processors
 let embeddingsProcessor: EmbeddingsProcessor | null = null;
-let groupingProcessor: GroupingProcessor | null = null;
 
 // State management
 let isProcessingEmbeddings = false;
@@ -33,9 +32,8 @@ async function initialize() {
 		await db.init();
 		console.log('Database initialized');
 
-		// Initialize processors
+		// Initialize embeddings processor
 		embeddingsProcessor = new EmbeddingsProcessor();
-		groupingProcessor = new GroupingProcessor();
 
 		console.log('Service worker ready');
 	} catch (error) {
@@ -269,12 +267,12 @@ async function handleStartEmbeddings(options: { batchSize?: number } = {}) {
 }
 
 /**
- * Start grouping process
+ * Start grouping process using LSH-based algorithm
  */
 async function handleStartGrouping(
 	options: { similarityThreshold?: number; timeWindowMinutes?: number } = {}
 ) {
-	console.log('Starting photo grouping...');
+	console.log('Starting photo grouping with LSH...');
 
 	try {
 		const {
@@ -282,49 +280,41 @@ async function handleStartGrouping(
 			timeWindowMinutes = 60
 		} = options;
 
-		// Get all photos with embeddings
-		const photos = await db.getAllPhotos();
-		const photosWithEmbeddings = photos.filter((p) => p.hasEmbedding);
+		// Check if there are photos with embeddings
+		const embeddingCount = await db.getEmbeddingCount();
 
-		console.log(`Grouping ${photosWithEmbeddings.length} photos`);
+		console.log(`Grouping ${embeddingCount} photos with LSH algorithm`);
 
-		if (photosWithEmbeddings.length === 0) {
+		if (embeddingCount === 0) {
 			return {
 				message: 'No photos with embeddings to group',
 				groups: 0
 			};
 		}
 
-		// Get all embeddings
-		const embeddings = await db.getAllEmbeddings();
-		const embeddingMap = new Map(embeddings.map((e) => [e.photoId, e.embedding]));
-
-		if (!groupingProcessor) {
-			groupingProcessor = new GroupingProcessor();
-		}
-
-		// Group photos
-		const groups = await groupingProcessor.groupSimilarPhotos(
-			photosWithEmbeddings,
-			embeddingMap,
+		// Use LSH-based grouper (handles streaming internally)
+		const grouper = new LSHPhotoGrouper({
 			similarityThreshold,
-			timeWindowMinutes
-		);
+			timeWindowMinutes,
+			batchSize: 1000, // Process 1000 embeddings per batch
+			lshConfig: {
+				numHashFunctions: 16,
+				numHashTables: 4
+			}
+		});
 
-		console.log(`Found ${groups.length} groups`);
-
-		// Store groups in database
-		for (const group of groups) {
-			await db.createGroup(group.photoIds, group.avgSimilarity);
-		}
+		// Groups are saved to database by grouper
+		const photoGroups = await grouper.groupPhotos();
 
 		await db.setMetadata('lastGroupingTime', Date.now());
-		await db.setMetadata('totalGroups', groups.length);
+		await db.setMetadata('totalGroups', photoGroups.length);
+
+		console.log(`Found ${photoGroups.length} groups`);
 
 		return {
 			message: 'Grouping complete',
-			groups: groups.length,
-			photosInGroups: groups.reduce((sum, g) => sum + g.photoIds.length, 0)
+			groups: photoGroups.length,
+			photosInGroups: photoGroups.reduce((sum, g) => sum + g.photoIds.length, 0)
 		};
 	} catch (error) {
 		console.error('Error during grouping:', error);

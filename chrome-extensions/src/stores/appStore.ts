@@ -640,13 +640,11 @@ function blobToDataUrl(blob: Blob): Promise<string> {
 	});
 }
 
-// Derived stores (for UI components that still need arrays)
-// These load batches on demand, not everything at once
+// Derived store for filtered groups
+// NOTE: This loads ALL groups. For large datasets, UI components should
+// use db.getGroupsBatch() directly instead of this derived store
 export const filteredGroups = derived(appStore, ($appStore) => {
-	// UI components should load groups in batches using db.getGroupsBatch()
-	// This derived store is now just for the filter criteria
-	return {
-		minGroupSize: $appStore.minGroupSize,
-		sortBy: $appStore.sortBy
-	};
+	// Return empty array by default
+	// UI components should load groups themselves using db.getGroupsBatch()
+	return [];
 });

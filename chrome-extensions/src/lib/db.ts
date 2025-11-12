@@ -10,7 +10,7 @@
  */
 
 const DB_NAME = 'LensCleanerDB';
-const DB_VERSION = 4; // Bumped for new compound indexes
+const DB_VERSION = 1; // Fresh start with optimized schema
 
 // ===== INTERFACES =====
 
@@ -65,7 +65,18 @@ class MetadataCache {
 	private readonly STATS_KEY = 'lens_stats_cache_v2';
 	private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
+	// Check if localStorage is available (not available in service workers)
+	private get hasLocalStorage(): boolean {
+		try {
+			return typeof localStorage !== 'undefined' && localStorage !== null;
+		} catch {
+			return false;
+		}
+	}
+
 	getCachedStats(): Stats | null {
+		if (!this.hasLocalStorage) return null;
+
 		try {
 			const cached = localStorage.getItem(this.STATS_KEY);
 			if (!cached) return null;
@@ -84,6 +95,8 @@ class MetadataCache {
 	}
 
 	updateStats(stats: Stats): void {
+		if (!this.hasLocalStorage) return;
+
 		try {
 			localStorage.setItem(this.STATS_KEY, JSON.stringify({
 				...stats,
@@ -95,6 +108,8 @@ class MetadataCache {
 	}
 
 	incrementPhotoCount(delta: number = 1): void {
+		if (!this.hasLocalStorage) return;
+
 		const stats = this.getCachedStats();
 		if (stats) {
 			stats.totalPhotos += delta;
@@ -104,6 +119,8 @@ class MetadataCache {
 	}
 
 	incrementEmbeddingCount(delta: number = 1): void {
+		if (!this.hasLocalStorage) return;
+
 		const stats = this.getCachedStats();
 		if (stats) {
 			stats.photosWithEmbeddings += delta;
@@ -113,6 +130,8 @@ class MetadataCache {
 	}
 
 	incrementGroupCount(delta: number = 1): void {
+		if (!this.hasLocalStorage) return;
+
 		const stats = this.getCachedStats();
 		if (stats) {
 			stats.totalGroups += delta;
@@ -122,7 +141,13 @@ class MetadataCache {
 	}
 
 	invalidate(): void {
-		localStorage.removeItem(this.STATS_KEY);
+		if (!this.hasLocalStorage) return;
+
+		try {
+			localStorage.removeItem(this.STATS_KEY);
+		} catch (error) {
+			console.warn('Failed to invalidate cache:', error);
+		}
 	}
 }
 
@@ -147,7 +172,6 @@ class LensDB {
 
 			request.onupgradeneeded = (event) => {
 				const db = (event.target as IDBOpenDBRequest).result;
-				const oldVersion = event.oldVersion;
 
 				// Photos store with compound indexes
 				if (!db.objectStoreNames.contains('photos')) {
@@ -160,20 +184,6 @@ class LensDB {
 					// Compound indexes for efficient queries
 					photosStore.createIndex('embeddingAndGroup', ['hasEmbedding', 'groupId'], { unique: false });
 					photosStore.createIndex('timestampAndEmbedding', ['timestamp', 'hasEmbedding'], { unique: false });
-				} else if (oldVersion < 4) {
-					// Add compound indexes to existing store
-					const transaction = (event.target as IDBOpenDBRequest).transaction;
-					if (transaction) {
-						const photosStore = transaction.objectStore('photos');
-
-						// Add new compound indexes if they don't exist
-						if (!photosStore.indexNames.contains('embeddingAndGroup')) {
-							photosStore.createIndex('embeddingAndGroup', ['hasEmbedding', 'groupId'], { unique: false });
-						}
-						if (!photosStore.indexNames.contains('timestampAndEmbedding')) {
-							photosStore.createIndex('timestampAndEmbedding', ['timestamp', 'hasEmbedding'], { unique: false });
-						}
-					}
 				}
 
 				// Embeddings store
