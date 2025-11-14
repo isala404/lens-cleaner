@@ -3,7 +3,7 @@
 	import PhotoGrid from './PhotoGrid.svelte';
 
 	export let totalPhotos: number;
-	export let photos: Photo[]; // Legacy prop, not used anymore
+	export const photos: Photo[] = []; // Legacy prop, not used anymore
 	export let onStartIndexing: () => void;
 	export let getCachedBlobUrl: (photo: Photo) => string;
 </script>

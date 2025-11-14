@@ -6,12 +6,14 @@
 import { writable, derived, get } from 'svelte/store';
 import db, { type Photo, type Group, type Stats } from '../lib/db';
 import { EmbeddingsProcessor } from '../lib/embeddings';
-import { GroupingProcessor } from '../lib/grouping';
+import { clusterImagesWithOverlap, type GroupingProgress } from '../lib/grouping';
 
 // Settings interface
 export interface Settings {
 	similarityThreshold: number;
 	timeWindowMinutes: number;
+	windowSizeMinutes: number;
+	overlapMinutes: number;
 }
 
 // Processing progress interface
@@ -49,7 +51,9 @@ const defaultState: AppState = {
 	selectedPhotosCount: 0,
 	settings: {
 		similarityThreshold: 0.406, // Default to 40.6% (70% in UI)
-		timeWindowMinutes: 60
+		timeWindowMinutes: 60, // Default to 1 hour
+		windowSizeMinutes: 60, // Default to 1 hour windows
+		overlapMinutes: 30 // Default to 30 minute overlap
 	},
 	processingProgress: {
 		isProcessing: false,
@@ -68,7 +72,7 @@ export const appStore = writable<AppState>(defaultState);
 
 // Singleton instances
 let embeddingsProcessor: EmbeddingsProcessor | null = null;
-let groupingProcessor: GroupingProcessor | null = null;
+// Remove groupingProcessor since we're using the new function
 
 // Persist processing state
 function saveProcessingState(progress: ProcessingProgress, originalTotal?: number) {
@@ -369,37 +373,28 @@ export async function calculateEmbeddings() {
 // Group photos
 export async function groupPhotos() {
 	const state = get(appStore);
+	// Note: Sliding window algorithm doesn't support resumability yet
+	// Always start fresh to avoid conflicts
 	const savedProgress = getSavedProcessingState();
-	const isResuming = savedProgress?.type === 'grouping' && savedProgress.isProcessing;
-	const alreadyProcessed = savedProgress?.current || 0;
-	const originalTotal = savedProgress?.originalTotal;
+
+	// Clear any existing saved state to start fresh
+	if (savedProgress?.type === 'grouping') {
+		localStorage.removeItem('lensCleanerProcessingState');
+	}
 
 	appStore.update((s) => ({
 		...s,
 		processingProgress: {
 			isProcessing: true,
 			type: 'grouping',
-			current: alreadyProcessed,
-			total: originalTotal || 0,
-			message: isResuming ? 'Resuming grouping...' : 'Preparing to group photos...'
+			current: 0,
+			total: 0,
+			message: 'Preparing to group photos...'
 		}
 	}));
-	saveProcessingState(
-		{
-			isProcessing: true,
-			type: 'grouping',
-			current: alreadyProcessed,
-			total: originalTotal || 0,
-			message: isResuming ? 'Resuming grouping...' : 'Preparing to group photos...'
-		},
-		originalTotal
-	);
 
 	try {
-		// Initialize processor if needed
-		if (!groupingProcessor) {
-			groupingProcessor = new GroupingProcessor();
-		}
+		// No need to initialize processor anymore - using new sliding window method
 
 		// Get all photos with embeddings (already sorted by dateTaken from database)
 		const photos = await db.getAllPhotos();
@@ -420,62 +415,50 @@ export async function groupPhotos() {
 			return 0;
 		}
 
-		// If resuming and groups exist, clear them first to avoid duplicates
-		// (This happens if grouping was interrupted after some groups were saved)
-		if (isResuming) {
-			const stats = await db.getStats();
-			if (stats.totalGroups > 0) {
-				console.log('Clearing existing groups before resuming...');
-				await db.clearGroups();
-				await refreshData();
-			}
+		// Clear existing groups to ensure clean start
+		const stats = await db.getStats();
+		if (stats.totalGroups > 0) {
+			console.log('Clearing existing groups before starting...');
+			await db.clearGroups();
+			// Don't call refreshData() here - it would overwrite our real-time progress
+			// We'll update stats directly in progress callback
 		}
-
-		// Use original total if resuming, otherwise use current count
-		const totalToShow = originalTotal || photosWithEmbeddings.length;
-		const currentProcessed = isResuming ? alreadyProcessed : 0;
 
 		// Update total count
 		appStore.update((s) => ({
 			...s,
 			processingProgress: {
 				...s.processingProgress,
-				total: totalToShow,
-				current: currentProcessed,
-				message: isResuming
-					? `Resuming: ${totalToShow - currentProcessed} photos remaining...`
-					: `Starting to group ${photosWithEmbeddings.length} photos...`
+				total: photosWithEmbeddings.length,
+				current: 0,
+				message: ''
 			}
 		}));
 		saveProcessingState(
 			{
 				isProcessing: true,
 				type: 'grouping',
-				current: currentProcessed,
-				total: totalToShow,
-				message: isResuming
-					? `Resuming: ${totalToShow - currentProcessed} photos remaining...`
-					: `Starting to group ${photosWithEmbeddings.length} photos...`
+				current: 0,
+				total: photosWithEmbeddings.length,
+				message: ''
 			},
-			totalToShow
+			photosWithEmbeddings.length
 		);
 
-		// Get all embeddings
-		const embeddings = await db.getAllEmbeddings();
-		const embeddingMap = new Map(embeddings.map((e) => [e.photoId, e.embedding]));
+		// Note: New sliding window method handles embeddings internally
 
-		// Group photos with progress callback
-		const groups = await groupingProcessor.groupSimilarPhotosBatched(
-			photosWithEmbeddings,
-			embeddingMap,
+		// Group photos using new memory-efficient sliding window method
+		const groups = await clusterImagesWithOverlap(
 			state.settings.similarityThreshold,
+			state.settings.windowSizeMinutes,
+			state.settings.overlapMinutes,
 			state.settings.timeWindowMinutes,
-			async (progress) => {
+			db,
+			async (progress: GroupingProgress) => {
 				// Save groups incrementally as they're found (for resumability)
 				// Note: The algorithm returns all groups at the end, but we save progress
 				// so if interrupted, we can restart cleanly
-				const message = `Processed ${progress.photosProcessed}/${progress.totalPhotos} photos • Found ${progress.groupsFound} groups`;
-
+				const remainingPhotos = progress.totalPhotos - progress.photosProcessed;
 				appStore.update((s) => ({
 					...s,
 					processingProgress: {
@@ -483,7 +466,11 @@ export async function groupPhotos() {
 						type: 'grouping',
 						current: progress.photosProcessed,
 						total: progress.totalPhotos,
-						message: message
+						message: `${remainingPhotos} photo${remainingPhotos !== 1 ? 's' : ''} left...`
+					},
+					stats: {
+						...s.stats,
+						totalGroups: progress.groupsFound // Update groups count in real-time
 					}
 				}));
 
@@ -493,12 +480,11 @@ export async function groupPhotos() {
 						type: 'grouping',
 						current: progress.photosProcessed,
 						total: progress.totalPhotos,
-						message: message
+						message: ''
 					},
-					totalToShow
+					photosWithEmbeddings.length
 				);
-			},
-			50 // batch size
+			}
 		);
 
 		// Store groups in database (all at once at the end)

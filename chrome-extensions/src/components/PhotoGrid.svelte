@@ -220,16 +220,14 @@
 
 					<!-- AI Suggestion Popover (shown on hover for AI-selected photos) -->
 					{#if photo.aiSuggestionReason && hoveredPhotoId === photo.id}
-						<div
-							class="pointer-events-none absolute top-2 right-2 z-[9999]"
-						>
-							<div
-								class="relative flex items-center justify-center"
-							>
+						<div class="pointer-events-none absolute top-2 right-2 z-[9999]">
+							<div class="relative flex items-center justify-center">
 								<div
-									class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-96 max-w-[90vw] rounded-md border-2 border-black bg-white px-3 py-2 shadow-lg"
+									class="absolute top-1/2 left-1/2 w-96 max-w-[90vw] -translate-x-1/2 -translate-y-1/2 rounded-md border-2 border-black bg-white px-3 py-2 shadow-lg"
 								>
-									<p class="text-xs leading-tight font-semibold text-gray-800 break-words whitespace-normal">
+									<p
+										class="text-xs leading-tight font-semibold break-words whitespace-normal text-gray-800"
+									>
 										{photo.aiSuggestionReason}
 									</p>
 								</div>

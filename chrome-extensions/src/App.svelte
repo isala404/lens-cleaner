@@ -122,6 +122,8 @@
 	let editingSettings = {
 		similarityThreshold: 0.406, // Default to 40.6% (70% in UI)
 		timeWindowMinutes: 60,
+		windowSizeMinutes: 60,
+		overlapMinutes: 30,
 		minGroupSize: 2
 	};
 
@@ -161,9 +163,15 @@
 		// Initialize editing settings from appStore
 		editingSettings.similarityThreshold = $appStore.settings.similarityThreshold;
 		editingSettings.timeWindowMinutes = $appStore.settings.timeWindowMinutes;
+		editingSettings.windowSizeMinutes = $appStore.settings.windowSizeMinutes;
+		editingSettings.overlapMinutes = $appStore.settings.overlapMinutes;
 		editingSettings.minGroupSize = $appStore.minGroupSize;
 		// Initialize slider position from threshold
 		similaritySliderPosition = thresholdToSliderPosition(editingSettings.similarityThreshold);
+
+		// Initialize photos for auto-select count
+		const allPhotos = await db.getAllPhotos();
+		photosForAutoSelectCount = allPhotos.filter((p) => p.hasEmbedding && p.groupId !== null).length;
 
 		// Check if we need to resume interrupted processing
 		if ($appStore.processingProgress.isProcessing) {
@@ -323,7 +331,7 @@
 		if (!autoProcessing) {
 			autoProcessing = true;
 			processingStartTime = Date.now();
-			processingStartProgress = 0; // Start from 0 for new grouping
+			processingStartProgress = $appStore.processingProgress.current; // Track current progress for accurate time estimation
 		}
 
 		currentStep = 'grouping';
@@ -429,12 +437,12 @@
 			autoSelectProgress = 0;
 			saveAutoSelectState();
 
-			// Get all photos with embeddings
+			// Get all photos with embeddings, excluding unique photos (groupId: null)
 			const photos = await db.getAllPhotos();
-			const photosWithEmbeddings = photos.filter((p) => p.hasEmbedding);
+			const photosWithEmbeddings = photos.filter((p) => p.hasEmbedding && p.groupId !== null);
 
 			if (photosWithEmbeddings.length === 0) {
-				throw new Error('No photos to upload');
+				throw new Error('No photos to upload (unique photos are excluded from processing)');
 			}
 
 			if (!autoSelectJobId) {
@@ -468,9 +476,15 @@
 					// Apply AI suggestions
 					await applyAISuggestions(results.deletions);
 
-					// Select photos with AI suggestions
+					// Select photos with AI suggestions directly (don't toggle)
 					const photosToSelect = results.deletions.map((d) => d.photo_id);
-					photosToSelect.forEach((id) => togglePhotoSelection(id));
+					for (const photoId of photosToSelect) {
+						await db.selectPhoto(photoId);
+					}
+
+					// Update selected count
+					const selectedCount = await db.getSelectedPhotosCount();
+					appStore.update((state) => ({ ...state, selectedPhotosCount: selectedCount }));
 
 					autoSelectStatus = 'completed';
 					localStorage.removeItem('autoSelectJobId');
@@ -509,8 +523,15 @@
 					async (results) => {
 						await applyAISuggestions(results.deletions);
 
+						// Select photos with AI suggestions directly (don't toggle)
 						const photosToSelect = results.deletions.map((d) => d.photo_id);
-						photosToSelect.forEach((id) => togglePhotoSelection(id));
+						for (const photoId of photosToSelect) {
+							await db.selectPhoto(photoId);
+						}
+
+						// Update selected count
+						const selectedCount = await db.getSelectedPhotosCount();
+						appStore.update((state) => ({ ...state, selectedPhotosCount: selectedCount }));
 
 						autoSelectStatus = 'completed';
 						clearAutoSelectState();
@@ -529,8 +550,15 @@
 			} else if (response.status === 'completed' && response.results) {
 				await applyAISuggestions(response.results.deletions);
 
+				// Select photos with AI suggestions directly (don't toggle)
 				const photosToSelect = response.results.deletions.map((d) => d.photo_id);
-				photosToSelect.forEach((id) => togglePhotoSelection(id));
+				for (const photoId of photosToSelect) {
+					await db.selectPhoto(photoId);
+				}
+
+				// Update selected count
+				const selectedCount = await db.getSelectedPhotosCount();
+				appStore.update((state) => ({ ...state, selectedPhotosCount: selectedCount }));
 
 				autoSelectStatus = 'completed';
 				clearAutoSelectState();
@@ -570,9 +598,9 @@
 			canRefundAutoSelect = false;
 			saveAutoSelectState();
 
-			// Get photos and recreate photoMetadata for retry
+			// Get photos and recreate photoMetadata for retry, excluding unique photos
 			const photos = await db.getAllPhotos();
-			const photosWithEmbeddings = photos.filter((p) => p.hasEmbedding);
+			const photosWithEmbeddings = photos.filter((p) => p.hasEmbedding && p.groupId !== null);
 			const { photoMetadata } = await preparePhotosForAutoSelect(photosWithEmbeddings);
 
 			await retryJobStatus(
@@ -584,8 +612,15 @@
 				async (results) => {
 					await applyAISuggestions(results.deletions);
 
+					// Select photos with AI suggestions directly (don't toggle)
 					const photosToSelect = results.deletions.map((d) => d.photo_id);
-					photosToSelect.forEach((id) => togglePhotoSelection(id));
+					for (const photoId of photosToSelect) {
+						await db.selectPhoto(photoId);
+					}
+
+					// Update selected count
+					const selectedCount = await db.getSelectedPhotosCount();
+					appStore.update((state) => ({ ...state, selectedPhotosCount: selectedCount }));
 
 					autoSelectStatus = 'completed';
 					clearAutoSelectState();
@@ -704,7 +739,9 @@
 	async function handleSaveSettings() {
 		await updateSettings({
 			similarityThreshold: editingSettings.similarityThreshold,
-			timeWindowMinutes: editingSettings.timeWindowMinutes
+			timeWindowMinutes: editingSettings.timeWindowMinutes,
+			windowSizeMinutes: editingSettings.windowSizeMinutes,
+			overlapMinutes: editingSettings.overlapMinutes
 		});
 
 		// Update minGroupSize separately as it's not part of Settings interface
@@ -720,6 +757,8 @@
 		// Load current settings into editing settings when opening modal
 		editingSettings.similarityThreshold = $appStore.settings.similarityThreshold;
 		editingSettings.timeWindowMinutes = $appStore.settings.timeWindowMinutes;
+		editingSettings.windowSizeMinutes = $appStore.settings.windowSizeMinutes;
+		editingSettings.overlapMinutes = $appStore.settings.overlapMinutes;
 		editingSettings.minGroupSize = $appStore.minGroupSize;
 		// Initialize slider position from threshold
 		similaritySliderPosition = thresholdToSliderPosition(editingSettings.similarityThreshold);
@@ -761,6 +800,9 @@
 
 			// Filter photos that are NOT in any group
 			ungroupedPhotos = allPhotos.filter((photo) => !groupedPhotoIds.has(photo.id));
+
+			// Update count of photos eligible for auto-select (with embeddings and in groups)
+			photosForAutoSelectCount = allPhotos.filter((p) => p.hasEmbedding && p.groupId !== null).length;
 		} catch (error) {
 			console.error('Error loading ungrouped photos:', error);
 			ungroupedPhotos = [];
@@ -807,6 +849,9 @@
 
 	// Track blob URLs for cleanup
 	let blobUrlCache = new SvelteMap<string, string>();
+
+	// Count of photos eligible for auto-select (with embeddings and in groups)
+	let photosForAutoSelectCount = 0;
 
 	function getCachedBlobUrl(photo: Photo): string {
 		if (blobUrlCache.has(photo.id)) {
@@ -881,7 +926,7 @@
 				onAutoSelect={handleAutoSelect}
 				onCheckoutCreated={handleCheckoutCreated}
 				onStartUpload={handleAutoSelectUpload}
-				totalPhotosCount={$appStore.stats.photosWithEmbeddings}
+				totalPhotosCount={photosForAutoSelectCount}
 				{canRetryAutoSelect}
 				{canRefundAutoSelect}
 				onRetryAutoSelect={handleRetryAutoSelect}

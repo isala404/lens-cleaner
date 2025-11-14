@@ -305,6 +305,160 @@ class LensDB {
 	}
 
 	/**
+	 * Get photos with embeddings in a specific time range (for sliding window processing)
+	 * @param startTime - Start timestamp in milliseconds
+	 * @param endTime - End timestamp in milliseconds
+	 * @param limit - Optional limit for batch processing
+	 * @returns Photos sorted by timestamp (oldest first)
+	 */
+	async getPhotosWithEmbeddingsInTimeRange(
+		startTime: number,
+		endTime: number,
+		limit?: number
+	): Promise<Photo[]> {
+		if (!this.db) throw new Error('Database not initialized');
+
+		const transaction = this.db.transaction(['photos'], 'readonly');
+		const store = transaction.objectStore('photos');
+		const index = store.index('timestamp');
+
+		return new Promise((resolve, reject) => {
+			const results: Photo[] = [];
+			let count = 0;
+
+			// Open cursor at start time
+			const range = IDBKeyRange.bound(startTime, endTime);
+			const request = index.openCursor(range, 'next'); // 'next' = ascending (oldest first)
+
+			request.onsuccess = (event) => {
+				const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
+				if (cursor && (!limit || count < limit)) {
+					const photo = cursor.value;
+					if (photo.hasEmbedding) {
+						results.push(photo);
+						count++;
+					}
+					cursor.continue();
+				} else {
+					resolve(results);
+				}
+			};
+
+			request.onerror = () => reject(request.error);
+		});
+	}
+
+	/**
+	 * Get embeddings for specific photo IDs (batch retrieval)
+	 * @param photoIds - Array of photo IDs
+	 * @returns Array of embeddings
+	 */
+	async getEmbeddingsForPhotos(photoIds: string[]): Promise<Embedding[]> {
+		if (!this.db) throw new Error('Database not initialized');
+
+		const transaction = this.db.transaction(['embeddings'], 'readonly');
+		const store = transaction.objectStore('embeddings');
+
+		return new Promise((resolve, reject) => {
+			const results: Embedding[] = [];
+			let completed = 0;
+
+			if (photoIds.length === 0) {
+				resolve(results);
+				return;
+			}
+
+			// Get each embedding by ID
+			photoIds.forEach((photoId) => {
+				const request = store.get(photoId);
+				request.onsuccess = () => {
+					if (request.result) {
+						results.push(request.result);
+					}
+					completed++;
+					if (completed === photoIds.length) {
+						resolve(results);
+					}
+				};
+				request.onerror = () => reject(request.error);
+			});
+		});
+	}
+
+	/**
+	 * Get time range of all photos with embeddings
+	 * @returns Object with minTime and maxTime in milliseconds
+	 */
+	async getPhotoTimeRange(): Promise<{ minTime: number; maxTime: number }> {
+		if (!this.db) throw new Error('Database not initialized');
+
+		const transaction = this.db.transaction(['photos'], 'readonly');
+		const store = transaction.objectStore('photos');
+		const index = store.index('timestamp');
+
+		return new Promise((resolve, reject) => {
+			let minTime = Infinity;
+			let maxTime = -Infinity;
+			let completed = 0;
+
+			const complete = () => {
+				completed++;
+				if (completed === 2) {
+					// If no photos with embeddings found, return current time range
+					if (minTime === Infinity || maxTime === -Infinity) {
+						const now = Date.now();
+						resolve({ minTime: now - 86400000, maxTime: now }); // 24 hour default
+					} else {
+						resolve({ minTime, maxTime });
+					}
+				}
+			};
+
+			// Get minimum timestamp
+			const minRequest = index.openCursor(null, 'next'); // oldest first
+			minRequest.onsuccess = (event) => {
+				const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
+				const findMinWithEmbedding = () => {
+					if (cursor) {
+						if (cursor.value.hasEmbedding) {
+							minTime = cursor.value.timestamp;
+							complete();
+						} else {
+							cursor.continue();
+							minRequest.onsuccess = findMinWithEmbedding;
+						}
+					} else {
+						complete();
+					}
+				};
+				findMinWithEmbedding();
+			};
+			minRequest.onerror = () => reject(minRequest.error);
+
+			// Get maximum timestamp
+			const maxRequest = index.openCursor(null, 'prev'); // newest first
+			maxRequest.onsuccess = (event) => {
+				const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
+				const findMaxWithEmbedding = () => {
+					if (cursor) {
+						if (cursor.value.hasEmbedding) {
+							maxTime = cursor.value.timestamp;
+							complete();
+						} else {
+							cursor.continue();
+							maxRequest.onsuccess = findMaxWithEmbedding;
+						}
+					} else {
+						complete();
+					}
+				};
+				findMaxWithEmbedding();
+			};
+			maxRequest.onerror = () => reject(maxRequest.error);
+		});
+	}
+
+	/**
 	 * Add an embedding for a photo
 	 */
 	async addEmbedding(photoId: string, embedding: Float32Array | number[]): Promise<Embedding> {
@@ -793,33 +947,61 @@ class LensDB {
 	async clearGroups(): Promise<void> {
 		if (!this.db) throw new Error('Database not initialized');
 
-		const transaction = this.db.transaction(['groups', 'photos'], 'readwrite');
-
-		// Clear groups
-		await new Promise<void>((resolve, reject) => {
-			const request = transaction.objectStore('groups').clear();
-			request.onsuccess = () => resolve();
-			request.onerror = () => reject(request.error);
-		});
-
-		// Reset counter
-		await this.setMetadata('groups:count', 0);
-
-		// Reset groupId on all photos
-		const photosStore = transaction.objectStore('photos');
-		const allPhotos = await new Promise<Photo[]>((resolve, reject) => {
-			const request = photosStore.getAll();
-			request.onsuccess = () => resolve(request.result);
-			request.onerror = () => reject(request.error);
-		});
-
-		for (const photo of allPhotos) {
-			photo.groupId = null;
+		try {
+			// First clear groups in a separate transaction
+			const groupsTransaction = this.db.transaction(['groups'], 'readwrite');
 			await new Promise<void>((resolve, reject) => {
-				const request = photosStore.put(photo);
+				const request = groupsTransaction.objectStore('groups').clear();
 				request.onsuccess = () => resolve();
 				request.onerror = () => reject(request.error);
 			});
+
+			// Reset counter
+			await this.setMetadata('groups:count', 0);
+
+			// Then reset groupId on photos in batches to avoid transaction timeout
+			const batchSize = 1000;
+
+			while (true) {
+				const photosTransaction = this.db.transaction(['photos'], 'readwrite');
+				const photosStore = photosTransaction.objectStore('photos');
+
+				const batchProcessed = await new Promise<boolean>((resolve, reject) => {
+					let batchCount = 0;
+					const request = photosStore.openCursor();
+
+					request.onsuccess = (event) => {
+						const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
+						if (cursor && batchCount < batchSize) {
+							const photo = cursor.value;
+							if (photo.groupId !== null) {
+								photo.groupId = null;
+								const updateRequest = cursor.update(photo);
+								updateRequest.onsuccess = () => {
+									batchCount++;
+									cursor.continue();
+								};
+								updateRequest.onerror = () => reject(updateRequest.error);
+							} else {
+								cursor.continue();
+							}
+						} else if (cursor) {
+							// Reached batch size, commit this transaction and continue
+							resolve(true);
+						} else {
+							// No more photos
+							resolve(false);
+						}
+					};
+
+					request.onerror = () => reject(request.error);
+				});
+
+				if (!batchProcessed) break; // No more photos to process
+			}
+		} catch (error) {
+			console.error('Error in clearGroups:', error);
+			throw error;
 		}
 	}
 
@@ -829,11 +1011,10 @@ class LensDB {
 	async clearEmbeddings(): Promise<void> {
 		if (!this.db) throw new Error('Database not initialized');
 
-		const transaction = this.db.transaction(['embeddings', 'photos'], 'readwrite');
-
-		// Clear embeddings
+		// First transaction: clear embeddings
+		const embeddingsTransaction = this.db.transaction(['embeddings'], 'readwrite');
 		await new Promise<void>((resolve, reject) => {
-			const request = transaction.objectStore('embeddings').clear();
+			const request = embeddingsTransaction.objectStore('embeddings').clear();
 			request.onsuccess = () => resolve();
 			request.onerror = () => reject(request.error);
 		});
@@ -841,21 +1022,45 @@ class LensDB {
 		// Reset counter
 		await this.setMetadata('embeddings:count', 0);
 
-		// Reset hasEmbedding flag on all photos
-		const photosStore = transaction.objectStore('photos');
-		const allPhotos = await new Promise<Photo[]>((resolve, reject) => {
-			const request = photosStore.getAll();
-			request.onsuccess = () => resolve(request.result);
-			request.onerror = () => reject(request.error);
-		});
+		// Second transaction: reset hasEmbedding flag on photos in batches
+		const batchSize = 1000;
 
-		for (const photo of allPhotos) {
-			photo.hasEmbedding = false;
-			await new Promise<void>((resolve, reject) => {
-				const request = photosStore.put(photo);
-				request.onsuccess = () => resolve();
+		while (true) {
+			const photosTransaction = this.db.transaction(['photos'], 'readwrite');
+			const photosStore = photosTransaction.objectStore('photos');
+
+			const batchProcessed = await new Promise<boolean>((resolve, reject) => {
+				let batchCount = 0;
+				const request = photosStore.openCursor();
+
+				request.onsuccess = (event) => {
+					const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
+					if (cursor && batchCount < batchSize) {
+						const photo = cursor.value;
+						if (photo.hasEmbedding) {
+							photo.hasEmbedding = false;
+							const updateRequest = cursor.update(photo);
+							updateRequest.onsuccess = () => {
+								batchCount++;
+								cursor.continue();
+							};
+							updateRequest.onerror = () => reject(updateRequest.error);
+						} else {
+							cursor.continue();
+						}
+					} else if (cursor) {
+						// Reached batch size, commit this transaction and continue
+						resolve(true);
+					} else {
+						// No more photos
+						resolve(false);
+					}
+				};
+
 				request.onerror = () => reject(request.error);
 			});
+
+			if (!batchProcessed) break; // No more photos to process
 		}
 	}
 
@@ -982,23 +1187,55 @@ class LensDB {
 	async clearAISuggestions(): Promise<void> {
 		if (!this.db) throw new Error('Database not initialized');
 
-		const transaction = this.db.transaction(['photos'], 'readwrite');
-		const photosStore = transaction.objectStore('photos');
+		try {
+			// Process photos in batches to avoid transaction timeout
+			const batchSize = 1000;
 
-		const allPhotos = await new Promise<Photo[]>((resolve, reject) => {
-			const request = photosStore.getAll();
-			request.onsuccess = () => resolve(request.result);
-			request.onerror = () => reject(request.error);
-		});
+			while (true) {
+				const transaction = this.db.transaction(['photos'], 'readwrite');
+				const photosStore = transaction.objectStore('photos');
 
-		for (const photo of allPhotos) {
-			photo.aiSuggestionReason = undefined;
-			photo.aiSuggestionConfidence = undefined;
-			await new Promise<void>((resolve, reject) => {
-				const request = photosStore.put(photo);
-				request.onsuccess = () => resolve();
-				request.onerror = () => reject(request.error);
-			});
+				const batchProcessed = await new Promise<boolean>((resolve, reject) => {
+					let batchCount = 0;
+					const request = photosStore.openCursor();
+
+					request.onsuccess = (event) => {
+						const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
+						if (cursor && batchCount < batchSize) {
+							const photo = cursor.value;
+							const hasAISuggestion =
+								photo.aiSuggestionReason !== undefined ||
+								photo.aiSuggestionConfidence !== undefined;
+
+							if (hasAISuggestion) {
+								photo.aiSuggestionReason = undefined;
+								photo.aiSuggestionConfidence = undefined;
+								const updateRequest = cursor.update(photo);
+								updateRequest.onsuccess = () => {
+									batchCount++;
+									cursor.continue();
+								};
+								updateRequest.onerror = () => reject(updateRequest.error);
+							} else {
+								cursor.continue();
+							}
+						} else if (cursor) {
+							// Reached batch size, commit this transaction and continue
+							resolve(true);
+						} else {
+							// No more photos
+							resolve(false);
+						}
+					};
+
+					request.onerror = () => reject(request.error);
+				});
+
+				if (!batchProcessed) break; // No more photos to process
+			}
+		} catch (error) {
+			console.error('Error in clearAISuggestions:', error);
+			throw error;
 		}
 	}
 

@@ -55,8 +55,7 @@
 			<div class="mb-2 text-5xl font-black text-black">
 				{#if processingProgress.isProcessing}
 					{#if currentStep === 'grouping'}
-						{@const match = processingProgress.message.match(/Found (\d+) groups/)}
-						{match ? match[1] : '0'}
+						{totalGroups}
 					{:else}
 						{processingProgress.current}
 					{/if}
@@ -104,7 +103,7 @@
 	>
 		<span class="shrink-0 text-2xl">💡</span>
 		<span class="text-sm leading-relaxed font-semibold text-black"
-			>Keep this tab open for best performance. Processing continues and progress is saved.</span
+			>Keep this tab in focus otherwise the browser would suspend the operation.</span
 		>
 	</div>
 </div>

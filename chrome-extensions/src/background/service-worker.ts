@@ -304,7 +304,7 @@ async function handleStartGrouping(
 		}
 
 		// Group photos
-		const groups = await groupingProcessor.groupSimilarPhotos(
+		const groups = await groupingProcessor.groupSimilarPhotosBatched(
 			photosWithEmbeddings,
 			embeddingMap,
 			similarityThreshold,
@@ -324,7 +324,10 @@ async function handleStartGrouping(
 		return {
 			message: 'Grouping complete',
 			groups: groups.length,
-			photosInGroups: groups.reduce((sum, g) => sum + g.photoIds.length, 0)
+			photosInGroups: groups.reduce(
+				(sum: number, g: { photoIds: string[] }) => sum + g.photoIds.length,
+				0
+			)
 		};
 	} catch (error) {
 		console.error('Error during grouping:', error);

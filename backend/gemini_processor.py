@@ -6,15 +6,19 @@ Handles batch processing of photos to identify duplicates and low-quality images
 import asyncio
 import base64
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
 from google import genai
 from google.genai import types
 
+logger = logging.getLogger(__name__)
+
 # Gemini Configuration
 BATCH_MODEL_ID = "gemini-flash-latest"
 POLLING_INTERVAL = 30  # seconds
+MAX_PHOTOS_PER_GROUP = 100  # Maximum photos per group to avoid API limits
 
 # Structured Output Schema
 BATCH_RESPONSE_SCHEMA = {
@@ -175,6 +179,15 @@ class GeminiProcessor:
             if len(group_photos) <= 1:
                 continue  # Skip single photo groups
 
+            # Skip groups that are too large to avoid API limits
+            if len(group_photos) > MAX_PHOTOS_PER_GROUP:
+                logger.warning(
+                    f"Skipping group {group_id} with {len(group_photos)} photos "
+                    f"(exceeds limit of {MAX_PHOTOS_PER_GROUP}). "
+                    "This group is too large for batch processing."
+                )
+                continue
+
             # Prepare photo data
             content_parts: list[dict[str, Any]] = [{"text": SYSTEM_PROMPT}]
 
@@ -237,7 +250,7 @@ class GeminiProcessor:
             )
             return uploaded_file
         except Exception as e:
-            print(f"Error uploading JSONL file: {e}")
+            logger.error(f"Error uploading JSONL file: {e}")
             raise
 
     async def _create_batch_job(self, uploaded_file: Any, job_id: str) -> Any:
@@ -295,7 +308,7 @@ class GeminiProcessor:
                         deletions.extend(ai_response.get("deletions", []))
 
             except (json.JSONDecodeError, KeyError) as e:
-                print(f"Error parsing result line: {e}")
+                logger.error(f"Error parsing result line: {e}")
                 continue
 
         return {"deletions": deletions}

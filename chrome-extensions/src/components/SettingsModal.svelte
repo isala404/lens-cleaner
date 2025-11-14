@@ -3,6 +3,8 @@
 	export let editingSettings: {
 		similarityThreshold: number;
 		timeWindowMinutes: number;
+		windowSizeMinutes: number;
+		overlapMinutes: number;
 		minGroupSize: number;
 	};
 	export let similaritySliderPosition: number;
@@ -87,6 +89,50 @@
 					<span class="mb-1 block text-sm text-brutalist-gray">minutes</span>
 					<span class="text-sm text-brutalist-gray"
 						>Photos taken within this time window can be grouped (default: 60 minutes)</span
+					>
+				</div>
+
+				<div class="mb-8">
+					<label for="windowSize" class="mb-3 flex flex-col gap-1">
+						<strong class="text-lg text-black">Memory Window Size</strong>
+						<span class="text-sm font-medium text-brutalist-gray"
+							>Amount of photos loaded into memory at once</span
+						>
+					</label>
+					<input
+						type="number"
+						id="windowSize"
+						bind:value={editingSettings.windowSizeMinutes}
+						min="10"
+						max="1440"
+						step="10"
+						class="mb-1 w-full rounded-xl border-4 border-black p-2.5 text-sm font-semibold focus:ring-4 focus:ring-pastel-purple-200 focus:outline-none"
+					/>
+					<span class="mb-1 block text-sm text-brutalist-gray">minutes</span>
+					<span class="text-sm text-brutalist-gray"
+						>Smaller windows use less memory but may miss connections (default: 60 minutes)</span
+					>
+				</div>
+
+				<div class="mb-8">
+					<label for="overlap" class="mb-3 flex flex-col gap-1">
+						<strong class="text-lg text-black">Window Overlap</strong>
+						<span class="text-sm font-medium text-brutalist-gray"
+							>Overlap between consecutive memory windows</span
+						>
+					</label>
+					<input
+						type="number"
+						id="overlap"
+						bind:value={editingSettings.overlapMinutes}
+						min="0"
+						max="720"
+						step="5"
+						class="mb-1 w-full rounded-xl border-4 border-black p-2.5 text-sm font-semibold focus:ring-4 focus:ring-pastel-purple-200 focus:outline-none"
+					/>
+					<span class="mb-1 block text-sm text-brutalist-gray">minutes</span>
+					<span class="text-sm text-brutalist-gray"
+						>Ensures photos near window boundaries are connected (default: 30 minutes)</span
 					>
 				</div>
 

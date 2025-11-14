@@ -1,10 +1,10 @@
 /**
- * Photo grouping algorithm
- * Groups similar photos based on visual similarity and temporal proximity
+ * Photo grouping algorithm - Memory Efficient Sliding Window Version
+ * Groups similar photos based on visual similarity using overlapping time windows
+ * Only loads a small window of data at a time to minimize memory usage
  */
 
-import { EmbeddingsProcessor } from './embeddings';
-import type { Photo } from './db';
+import type { Photo, Embedding } from './db';
 
 export interface PhotoGroup {
 	photoIds: string[];
@@ -28,566 +28,364 @@ export interface GroupingProgress {
 	photosProcessed: number;
 	totalPhotos: number;
 	groupsFound: number;
-	currentBatch: number;
-	totalBatches: number;
+	currentWindow: number;
+	totalWindows: number;
 }
 
-export class GroupingProcessor {
-	private groups: PhotoGroup[] = [];
+/**
+ * Cosine similarity between two embedding vectors
+ */
+function cosineSimilarity(embedding1: number[], embedding2: number[]): number {
+	if (embedding1.length !== embedding2.length) {
+		throw new Error('Embedding dimensions must match');
+	}
 
+	let dotProduct = 0;
+	let norm1 = 0;
+	let norm2 = 0;
+
+	for (let i = 0; i < embedding1.length; i++) {
+		dotProduct += embedding1[i] * embedding2[i];
+		norm1 += embedding1[i] * embedding1[i];
+		norm2 += embedding2[i] * embedding2[i];
+	}
+
+	norm1 = Math.sqrt(norm1);
+	norm2 = Math.sqrt(norm2);
+
+	if (norm1 === 0 || norm2 === 0) {
+		return 0;
+	}
+
+	return dotProduct / (norm1 * norm2);
+}
+
+/**
+ * Cluster photos within a single time window
+ */
+function clusterWindow(
+	photos: Photo[],
+	embeddings: Embedding[],
+	similarityThreshold: number,
+	timeWindowMinutes: number
+): PhotoGroup[] {
+	// Create embedding map for quick lookup
+	const embeddingMap = new Map<string, number[]>();
+	embeddings.forEach((emb) => {
+		embeddingMap.set(emb.photoId, emb.embedding);
+	});
+
+	// Sort photos by timestamp (oldest first)
+	const sortedPhotos = [...photos].sort((a, b) => a.timestamp - b.timestamp);
+	const groups: PhotoGroup[] = [];
+	const assignedPhotos = new Set<string>();
+	const timeWindowSeconds = timeWindowMinutes * 60;
+
+	// Group photos using sliding window within this time window
+	for (let i = 0; i < sortedPhotos.length; i++) {
+		const photo1 = sortedPhotos[i];
+
+		// Skip if already assigned to a group
+		if (assignedPhotos.has(photo1.id)) {
+			continue;
+		}
+
+		const embedding1 = embeddingMap.get(photo1.id);
+		if (!embedding1) {
+			continue;
+		}
+
+		// Mark photo1 as processed immediately
+		assignedPhotos.add(photo1.id);
+
+		// Start a new group with photo1
+		const group: PhotoGroup = {
+			photoIds: [photo1.id],
+			similarities: [],
+			avgSimilarity: 0,
+			timeSpan: 0,
+			startTime: new Date(photo1.dateTaken),
+			endTime: new Date(photo1.dateTaken)
+		};
+
+		// Store embeddings of photos in this group for comparison
+		const groupEmbeddings: Array<{ id: string; embedding: number[] }> = [
+			{ id: photo1.id, embedding: embedding1 }
+		];
+
+		const photo1Time = photo1.timestamp;
+
+		// Look ahead for similar photos within time window
+		for (let j = i + 1; j < sortedPhotos.length; j++) {
+			const photo2 = sortedPhotos[j];
+
+			// Skip if already assigned
+			if (assignedPhotos.has(photo2.id)) {
+				continue;
+			}
+
+			const photo2Time = photo2.timestamp;
+
+			// Check time window
+			const timeDiffSeconds = Math.abs(photo2Time - photo1Time) / 1000;
+
+			// Break early if we've gone past the time window (photos are sorted)
+			if (photo2Time > photo1Time && timeDiffSeconds > timeWindowSeconds) {
+				break;
+			}
+
+			// Skip if outside time window but continue checking
+			if (timeDiffSeconds > timeWindowSeconds) {
+				continue;
+			}
+
+			const embedding2 = embeddingMap.get(photo2.id);
+			if (!embedding2) {
+				continue;
+			}
+
+			// Check similarity against ALL photos in the group
+			let maxSimilarity = -1;
+			let isSimilarToGroup = false;
+
+			for (const groupPhoto of groupEmbeddings) {
+				const similarity = cosineSimilarity(groupPhoto.embedding, embedding2);
+				maxSimilarity = Math.max(maxSimilarity, similarity);
+
+				// If similar enough to any photo in the group, add it
+				if (similarity >= similarityThreshold) {
+					isSimilarToGroup = true;
+					break;
+				}
+			}
+
+			// If similar enough to the group, add to group and mark as processed
+			if (isSimilarToGroup) {
+				group.photoIds.push(photo2.id);
+				group.similarities.push(maxSimilarity);
+				group.endTime = new Date(photo2.dateTaken);
+				assignedPhotos.add(photo2.id);
+
+				// Add this photo's embedding to the group for future comparisons
+				groupEmbeddings.push({ id: photo2.id, embedding: embedding2 });
+			}
+		}
+
+		// Only create group if it has at least 2 photos
+		if (group.photoIds.length >= 2) {
+			// Calculate average similarity
+			group.avgSimilarity =
+				group.similarities.reduce((sum, s) => sum + s, 0) / group.similarities.length;
+
+			// Calculate time span
+			group.timeSpan = (group.endTime.getTime() - group.startTime.getTime()) / 1000 / 60; // in minutes
+
+			groups.push(group);
+		}
+	}
+
+	return groups;
+}
+
+/**
+ * Remove photos that have already been processed from a window
+ */
+function deduplicateWindow(
+	photos: Photo[],
+	embeddings: Embedding[],
+	processedPhotoIds: Set<string>
+): { photos: Photo[]; embeddings: Embedding[] } {
+	const photoSet = new Set(photos.map((p) => p.id));
+	const remainingPhotoIds = new Set([...photoSet].filter((id) => !processedPhotoIds.has(id)));
+
+	const remainingPhotos = photos.filter((p) => remainingPhotoIds.has(p.id));
+	const remainingEmbeddings = embeddings.filter((e) => remainingPhotoIds.has(e.photoId));
+
+	return { photos: remainingPhotos, embeddings: remainingEmbeddings };
+}
+
+/**
+ * Memory-efficient clustering using overlapping sliding windows
+ * Only loads a small window of data at a time to minimize memory usage
+ *
+ * @param similarityThreshold - Minimum similarity score (0-1)
+ * @param windowSizeMinutes - Size of each time window in minutes
+ * @param overlapMinutes - Overlap between consecutive windows in minutes
+ * @param timeWindowMinutes - Maximum time difference for grouping within a window
+ * @param onProgress - Optional progress callback
+ * @param db - Database instance for streaming data
+ */
+export async function clusterImagesWithOverlap(
+	similarityThreshold: number = 0.6,
+	windowSizeMinutes: number = 60,
+	overlapMinutes: number = 30,
+	timeWindowMinutes: number = 60,
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	db: any, // Database instance - required parameter
+	onProgress?: (progress: GroupingProgress) => void
+): Promise<PhotoGroup[]> {
+	console.log(`Starting memory-efficient clustering with sliding windows...`);
+	console.log(`Window size: ${windowSizeMinutes} minutes, Overlap: ${overlapMinutes} minutes`);
+	console.log(
+		`Similarity threshold: ${similarityThreshold}, Time window: ${timeWindowMinutes} minutes`
+	);
+
+	// Cast database to any for method calls
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	const dbInstance = db as any;
+
+	// Ensure database is initialized
+	if (!dbInstance.db) {
+		await dbInstance.init();
+	}
+
+	// Get the overall time range of all photos
+	const { minTime, maxTime } = await dbInstance.getPhotoTimeRange();
+
+	// Get total photo count for accurate progress tracking
+	const allPhotos = await dbInstance.getAllPhotos();
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	const totalPhotoCount = allPhotos.filter((p: any) => p.hasEmbedding).length;
+
+	if (totalPhotoCount === 0) {
+		console.warn('No photos have embeddings! Cannot create groups.');
+		return [];
+	}
+	const totalDurationMs = maxTime - minTime;
+	const windowSizeMs = windowSizeMinutes * 60 * 1000;
+	const overlapMs = overlapMinutes * 60 * 1000;
+	const stepMs = windowSizeMs - overlapMs;
+
+	const totalWindows = Math.ceil(totalDurationMs / stepMs);
+	const allGroups: PhotoGroup[] = [];
+	const processedPhotoIds = new Set<string>();
+
+	let totalPhotosProcessed = 0;
+
+	// Process each overlapping window
+	for (let windowIndex = 0; windowIndex < totalWindows; windowIndex++) {
+		const windowStartMs = minTime + windowIndex * stepMs;
+		const windowEndMs = Math.min(windowStartMs + windowSizeMs, maxTime);
+
+		console.log(
+			`Processing window ${windowIndex + 1}/${totalWindows}: ${new Date(windowStartMs).toISOString()} to ${new Date(windowEndMs).toISOString()}`
+		);
+
+		// Stream photos for this window
+		const windowPhotos = await dbInstance.getPhotosWithEmbeddingsInTimeRange(
+			windowStartMs,
+			windowEndMs
+		);
+
+		// Get embeddings for these photos
+		const photoIds = windowPhotos.map((p: Photo) => p.id);
+		const windowEmbeddings = await dbInstance.getEmbeddingsForPhotos(photoIds);
+
+		// Remove already processed photos
+		const { photos, embeddings } = deduplicateWindow(
+			windowPhotos,
+			windowEmbeddings,
+			processedPhotoIds
+		);
+
+		if (photos.length === 0) {
+			console.log(`Window ${windowIndex + 1}: No new photos to process`);
+			continue;
+		}
+
+		// Cluster photos within this window
+		const windowGroups = clusterWindow(photos, embeddings, similarityThreshold, timeWindowMinutes);
+
+		// Add groups to results
+		allGroups.push(...windowGroups);
+
+		// Mark all photos in this window as processed
+		photos.forEach((photo) => processedPhotoIds.add(photo.id));
+		totalPhotosProcessed += photos.length;
+
+		// Report progress
+		if (onProgress) {
+			onProgress({
+				photosProcessed: totalPhotosProcessed,
+				totalPhotos: totalPhotoCount, // Use actual total for accurate progress bar
+				groupsFound: allGroups.length,
+				currentWindow: windowIndex + 1,
+				totalWindows: totalWindows
+			});
+		}
+
+		// Small delay to prevent UI blocking
+		await new Promise((resolve) => setTimeout(resolve, 10));
+	}
+
+	console.log(
+		`Clustering complete: ${allGroups.length} groups from ${totalPhotosProcessed} photos`
+	);
+
+	return allGroups;
+}
+
+/**
+ * Get statistics about grouping results
+ */
+export function getGroupingStats(groups: PhotoGroup[]): GroupingStats {
+	const totalPhotosInGroups = groups.reduce((sum, group) => sum + group.photoIds.length, 0);
+
+	const avgGroupSize = groups.length > 0 ? totalPhotosInGroups / groups.length : 0;
+
+	const avgSimilarity =
+		groups.length > 0 ? groups.reduce((sum, g) => sum + g.avgSimilarity, 0) / groups.length : 0;
+
+	const groupSizes = groups.map((g) => g.photoIds.length);
+	const maxGroupSize = Math.max(...groupSizes, 0);
+	const minGroupSize = Math.min(...groupSizes, Infinity);
+
+	return {
+		totalGroups: groups.length,
+		totalPhotosInGroups,
+		avgGroupSize: avgGroupSize.toFixed(2),
+		avgSimilarity: avgSimilarity.toFixed(3),
+		maxGroupSize,
+		minGroupSize: minGroupSize === Infinity ? 0 : minGroupSize
+	};
+}
+
+// Legacy exports for backward compatibility
+export class GroupingProcessor {
 	/**
-	 * Group similar photos based on embeddings and time taken (BATCHED VERSION)
-	 * Processes photos in batches with delays to prevent UI freezing
-	 * @param photos - Array of photo objects with embeddings
-	 * @param embeddingMap - Map of photoId -> embedding array
-	 * @param similarityThreshold - Minimum similarity score (0-1)
-	 * @param timeWindowMinutes - Maximum time difference in minutes
-	 * @param onProgress - Callback for progress updates
-	 * @param batchSize - Number of photos to process per batch (default: 50)
-	 * @returns Array of groups
+	 * Legacy method - redirects to new sliding window implementation
 	 */
 	async groupSimilarPhotosBatched(
 		photos: Photo[],
 		embeddingMap: Map<string, number[]>,
 		similarityThreshold: number = 0.6,
 		timeWindowMinutes: number = 60,
-		onProgress?: (progress: GroupingProgress) => void,
-		batchSize: number = 50
+		onProgress?: (progress: GroupingProgress) => void
 	): Promise<PhotoGroup[]> {
-		console.log(`Grouping ${photos.length} photos in batches of ${batchSize}...`);
-		console.log(`Similarity threshold: ${similarityThreshold}`);
-		console.log(`Time window: ${timeWindowMinutes} minutes`);
-
-		// Sort photos by timestamp (numeric field) for reliable chronological ordering (oldest first)
-		// Note: Database returns newest first, so we need to reverse for grouping algorithm
-		// This ensures photos in time windows are contiguous in the sorted array
-		const sortedPhotos = [...photos].sort((a, b) => {
-			return a.timestamp - b.timestamp;
-		});
-
-		const groups: PhotoGroup[] = [];
-		const assignedPhotos = new Set<string>();
-		const timeWindowSeconds = timeWindowMinutes * 60;
-		const totalPhotos = sortedPhotos.length;
-		const totalBatches = Math.ceil(totalPhotos / batchSize);
-
-		// Process photos in batches
-		for (let batchIdx = 0; batchIdx < totalBatches; batchIdx++) {
-			const batchStart = batchIdx * batchSize;
-			const batchEnd = Math.min(batchStart + batchSize, totalPhotos);
-			const batch = sortedPhotos.slice(batchStart, batchEnd);
-
-			// Process this batch
-			for (let i = 0; i < batch.length; i++) {
-				const globalIdx = batchStart + i;
-				const photo1 = batch[i];
-
-				// Skip if already assigned to a group
-				if (assignedPhotos.has(photo1.id)) {
-					continue;
-				}
-
-				const embedding1 = embeddingMap.get(photo1.id);
-				if (!embedding1) {
-					continue;
-				}
-
-				// Mark photo1 as processed immediately
-				assignedPhotos.add(photo1.id);
-
-				// Start a new group with photo1
-				const group: PhotoGroup = {
-					photoIds: [photo1.id],
-					similarities: [],
-					avgSimilarity: 0,
-					timeSpan: 0,
-					startTime: new Date(photo1.dateTaken),
-					endTime: new Date(photo1.dateTaken)
-				};
-
-				// Store embeddings of photos in this group for comparison
-				const groupEmbeddings: Array<{ id: string; embedding: number[] }> = [
-					{ id: photo1.id, embedding: embedding1 }
-				];
-
-				// Use timestamp field directly (already in milliseconds since epoch)
-				const photo1Time = photo1.timestamp;
-
-				// Look ahead for similar photos within time window
-				// Search in remaining photos from current position onwards
-				for (let j = globalIdx + 1; j < sortedPhotos.length; j++) {
-					const photo2 = sortedPhotos[j];
-
-					// Skip if already assigned
-					if (assignedPhotos.has(photo2.id)) {
-						continue;
-					}
-
-					// Use timestamp field directly (already in milliseconds since epoch)
-					const photo2Time = photo2.timestamp;
-
-					// Check time window - use the configured time window in seconds
-					const timeDiffSeconds = Math.abs(photo2Time - photo1Time) / 1000;
-
-					// Break early if we've gone past the time window (photos are sorted)
-					if (photo2Time > photo1Time && timeDiffSeconds > timeWindowSeconds) {
-						break;
-					}
-
-					// Skip if outside time window but continue checking (for photos before photo1)
-					if (timeDiffSeconds > timeWindowSeconds) {
-						continue;
-					}
-
-					const embedding2 = embeddingMap.get(photo2.id);
-					if (!embedding2) {
-						continue;
-					}
-
-					// Check similarity against ALL photos in the group, not just the first one
-					// A photo should be added if it's similar to ANY photo already in the group
-					let maxSimilarity = -1;
-					let isSimilarToGroup = false;
-
-					for (const groupPhoto of groupEmbeddings) {
-						const similarity = EmbeddingsProcessor.cosineSimilarity(
-							groupPhoto.embedding,
-							embedding2
-						);
-
-						maxSimilarity = Math.max(maxSimilarity, similarity);
-
-						// If similar enough to any photo in the group, add it
-						if (similarity >= similarityThreshold) {
-							isSimilarToGroup = true;
-							break; // No need to check other photos once we find a match
-						}
-					}
-
-					// If similar enough to the group, add to group and mark as processed
-					if (isSimilarToGroup) {
-						group.photoIds.push(photo2.id);
-						group.similarities.push(maxSimilarity);
-						group.endTime = new Date(photo2.dateTaken);
-						assignedPhotos.add(photo2.id);
-
-						// Add this photo's embedding to the group for future comparisons
-						groupEmbeddings.push({ id: photo2.id, embedding: embedding2 });
-					}
-				}
-
-				// Only create group if it has at least 2 photos
-				if (group.photoIds.length >= 2) {
-					// Calculate average similarity
-					group.avgSimilarity =
-						group.similarities.reduce((sum, s) => sum + s, 0) / group.similarities.length;
-
-					// Calculate time span
-					group.timeSpan = (group.endTime.getTime() - group.startTime.getTime()) / 1000 / 60; // in minutes
-
-					groups.push(group);
-				}
-			}
-
-			// Report progress after each batch
-			if (onProgress) {
-				onProgress({
-					photosProcessed: batchEnd,
-					totalPhotos: totalPhotos,
-					groupsFound: groups.length,
-					currentBatch: batchIdx + 1,
-					totalBatches: totalBatches
-				});
-			}
-
-			// Yield to the browser to prevent UI freezing
-			// Add a small delay after each batch to allow UI updates
-			if (batchIdx < totalBatches - 1) {
-				await new Promise((resolve) => setTimeout(resolve, 10));
-			}
-		}
-
-		console.log(`Created ${groups.length} groups from ${photos.length} photos`);
-		console.log(`Photos in groups: ${assignedPhotos.size}`);
-
-		return groups;
-	}
-
-	/**
-	 * Group similar photos based on embeddings and time taken (ORIGINAL UNBATCHED VERSION)
-	 * @param photos - Array of photo objects with embeddings
-	 * @param embeddingMap - Map of photoId -> embedding array
-	 * @param similarityThreshold - Minimum similarity score (0-1)
-	 * @param timeWindowMinutes - Maximum time difference in minutes
-	 * @returns Array of groups
-	 */
-	async groupSimilarPhotos(
-		photos: Photo[],
-		embeddingMap: Map<string, number[]>,
-		similarityThreshold: number = 0.6,
-		timeWindowMinutes: number = 60
-	): Promise<PhotoGroup[]> {
-		console.log(`Grouping ${photos.length} photos...`);
-		console.log(`Similarity threshold: ${similarityThreshold}`);
-		console.log(`Time window: ${timeWindowMinutes} minutes`);
-
-		// Sort photos by timestamp (numeric field) for reliable chronological ordering (oldest first)
-		// Note: Database returns newest first, so we need to reverse for grouping algorithm
-		// This ensures photos in time windows are contiguous in the sorted array
-		const sortedPhotos = [...photos].sort((a, b) => {
-			return a.timestamp - b.timestamp;
-		});
-
-		const groups: PhotoGroup[] = [];
-		const assignedPhotos = new Set<string>();
-		const timeWindowSeconds = timeWindowMinutes * 60;
-
-		// Use a sliding window approach with improved similarity checking
-		for (let i = 0; i < sortedPhotos.length; i++) {
-			const photo1 = sortedPhotos[i];
-
-			// Skip if already assigned to a group
-			if (assignedPhotos.has(photo1.id)) {
-				continue;
-			}
-
-			const embedding1 = embeddingMap.get(photo1.id);
-			if (!embedding1) {
-				continue;
-			}
-
-			// Mark photo1 as processed immediately
-			assignedPhotos.add(photo1.id);
-
-			// Start a new group with photo1
-			const group: PhotoGroup = {
-				photoIds: [photo1.id],
-				similarities: [],
-				avgSimilarity: 0,
-				timeSpan: 0,
-				startTime: new Date(photo1.dateTaken),
-				endTime: new Date(photo1.dateTaken)
-			};
-
-			// Store embeddings of photos in this group for comparison
-			const groupEmbeddings: Array<{ id: string; embedding: number[] }> = [
-				{ id: photo1.id, embedding: embedding1 }
-			];
-
-			// Use timestamp field directly (already in milliseconds since epoch)
-			const photo1Time = photo1.timestamp;
-
-			// Look ahead for similar photos within time window
-			for (let j = i + 1; j < sortedPhotos.length; j++) {
-				const photo2 = sortedPhotos[j];
-
-				// Skip if already assigned
-				if (assignedPhotos.has(photo2.id)) {
-					continue;
-				}
-
-				// Use timestamp field directly (already in milliseconds since epoch)
-				const photo2Time = photo2.timestamp;
-
-				// Check time window - use the configured time window in seconds
-				const timeDiffSeconds = Math.abs(photo2Time - photo1Time) / 1000;
-
-				// Break early if we've gone past the time window (photos are sorted)
-				if (photo2Time > photo1Time && timeDiffSeconds > timeWindowSeconds) {
-					break;
-				}
-
-				// Skip if outside time window but continue checking (for photos before photo1)
-				if (timeDiffSeconds > timeWindowSeconds) {
-					continue;
-				}
-
-				const embedding2 = embeddingMap.get(photo2.id);
-				if (!embedding2) {
-					continue;
-				}
-
-				// IMPROVED: Check similarity against ALL photos in the group, not just the first one
-				// A photo should be added if it's similar to ANY photo already in the group
-				let maxSimilarity = -1;
-				let isSimilarToGroup = false;
-
-				for (const groupPhoto of groupEmbeddings) {
-					const similarity = EmbeddingsProcessor.cosineSimilarity(groupPhoto.embedding, embedding2);
-
-					maxSimilarity = Math.max(maxSimilarity, similarity);
-
-					// If similar enough to any photo in the group, add it
-					if (similarity >= similarityThreshold) {
-						isSimilarToGroup = true;
-						break; // No need to check other photos once we find a match
-					}
-				}
-
-				// If similar enough to the group, add to group and mark as processed
-				if (isSimilarToGroup) {
-					group.photoIds.push(photo2.id);
-					group.similarities.push(maxSimilarity);
-					group.endTime = new Date(photo2.dateTaken);
-					assignedPhotos.add(photo2.id);
-
-					// Add this photo's embedding to the group for future comparisons
-					groupEmbeddings.push({ id: photo2.id, embedding: embedding2 });
-				}
-			}
-
-			// Only create group if it has at least 2 photos
-			if (group.photoIds.length >= 2) {
-				// Calculate average similarity
-				group.avgSimilarity =
-					group.similarities.reduce((sum, s) => sum + s, 0) / group.similarities.length;
-
-				// Calculate time span
-				group.timeSpan = (group.endTime.getTime() - group.startTime.getTime()) / 1000 / 60; // in minutes
-
-				groups.push(group);
-
-				console.log(
-					`Group ${groups.length}: ${group.photoIds.length} photos, avg similarity: ${group.avgSimilarity.toFixed(3)}, time span: ${group.timeSpan.toFixed(1)} min`
-				);
-			}
-		}
-
-		console.log(`Created ${groups.length} groups from ${photos.length} photos`);
-		console.log(`Photos in groups: ${assignedPhotos.size}`);
-
-		return groups;
-	}
-
-	/**
-	 * Get time difference in minutes between two dates
-	 */
-	getTimeDifferenceMinutes(date1String: string, date2String: string): number {
-		const d1 = new Date(date1String);
-		const d2 = new Date(date2String);
-		return Math.abs(d2.getTime() - d1.getTime()) / 1000 / 60;
-	}
-
-	/**
-	 * Advanced grouping using hierarchical clustering
-	 * Groups photos that are similar to each other transitively
-	 * (A similar to B, B similar to C => A, B, C in same group)
-	 */
-	async hierarchicalGrouping(
-		photos: Photo[],
-		embeddingMap: Map<string, number[]>,
-		similarityThreshold: number = 0.6,
-		timeWindowMinutes: number = 60
-	): Promise<PhotoGroup[]> {
-		console.log('Starting hierarchical clustering...');
-
-		interface Cluster {
-			photoIds: string[];
-			centroid: number[];
-			dateTaken: Date;
-		}
-
-		// Build similarity matrix for photos within time windows
-		const clusters: Cluster[] = photos.map((photo) => ({
-			photoIds: [photo.id],
-			centroid: embeddingMap.get(photo.id)!,
-			dateTaken: new Date(photo.dateTaken)
-		}));
-
-		let merged = true;
-
-		while (merged && clusters.length > 1) {
-			merged = false;
-			let maxSimilarity = -1;
-			let mergeIndices: [number, number] = [-1, -1];
-
-			// Find most similar pair within time window
-			for (let i = 0; i < clusters.length; i++) {
-				for (let j = i + 1; j < clusters.length; j++) {
-					// Check time window
-					const timeDiff =
-						Math.abs(clusters[i].dateTaken.getTime() - clusters[j].dateTaken.getTime()) / 1000 / 60;
-
-					if (timeDiff > timeWindowMinutes) {
-						continue;
-					}
-
-					// Calculate similarity between centroids
-					const similarity = EmbeddingsProcessor.cosineSimilarity(
-						clusters[i].centroid,
-						clusters[j].centroid
-					);
-
-					if (similarity > maxSimilarity && similarity >= similarityThreshold) {
-						maxSimilarity = similarity;
-						mergeIndices = [i, j];
-						merged = true;
-					}
-				}
-			}
-
-			// Merge the most similar clusters
-			if (merged) {
-				const [i, j] = mergeIndices;
-				const cluster1 = clusters[i];
-				const cluster2 = clusters[j];
-
-				// Merge photo IDs
-				const mergedPhotoIds = [...cluster1.photoIds, ...cluster2.photoIds];
-
-				// Calculate new centroid (average of embeddings)
-				const newCentroid = this.averageEmbeddings([cluster1.centroid, cluster2.centroid]);
-
-				// Use earlier date as cluster date
-				const newDate =
-					cluster1.dateTaken < cluster2.dateTaken ? cluster1.dateTaken : cluster2.dateTaken;
-
-				// Create merged cluster
-				const mergedCluster: Cluster = {
-					photoIds: mergedPhotoIds,
-					centroid: newCentroid,
-					dateTaken: newDate
-				};
-
-				// Remove old clusters and add new one
-				clusters.splice(Math.max(i, j), 1);
-				clusters.splice(Math.min(i, j), 1);
-				clusters.push(mergedCluster);
-			}
-		}
-
-		// Convert clusters to groups format
-		const groups: PhotoGroup[] = clusters
-			.filter((cluster) => cluster.photoIds.length >= 2)
-			.map((cluster) => ({
-				photoIds: cluster.photoIds,
-				similarities: [],
-				avgSimilarity: 0.9, // Approximate since we don't track individual similarities
-				timeSpan: 0,
-				startTime: cluster.dateTaken,
-				endTime: cluster.dateTaken
-			}));
-
-		console.log(`Hierarchical clustering created ${groups.length} groups`);
-
-		return groups;
-	}
-
-	/**
-	 * Calculate average of multiple embeddings
-	 */
-	averageEmbeddings(embeddings: number[][]): number[] {
-		const length = embeddings[0].length;
-		const avg = new Array(length).fill(0);
-
-		for (let i = 0; i < length; i++) {
-			let sum = 0;
-			for (const embedding of embeddings) {
-				sum += embedding[i];
-			}
-			avg[i] = sum / embeddings.length;
-		}
-
-		// Normalize the average
-		const norm = Math.sqrt(avg.reduce((sum, val) => sum + val * val, 0));
-
-		if (norm > 0) {
-			for (let i = 0; i < length; i++) {
-				avg[i] /= norm;
-			}
-		}
-
-		return avg;
-	}
-
-	/**
-	 * Find duplicate photos (very high similarity, e.g., > 0.95)
-	 */
-	async findDuplicates(
-		photos: Photo[],
-		embeddingMap: Map<string, number[]>,
-		duplicateThreshold: number = 0.95
-	): Promise<PhotoGroup[]> {
-		console.log('Finding exact duplicates...');
-
-		const duplicates: PhotoGroup[] = [];
-		const processed = new Set<string>();
-
-		for (let i = 0; i < photos.length; i++) {
-			const photo1 = photos[i];
-
-			if (processed.has(photo1.id)) {
-				continue;
-			}
-
-			const embedding1 = embeddingMap.get(photo1.id);
-			if (!embedding1) {
-				continue;
-			}
-
-			const duplicateGroup: string[] = [photo1.id];
-
-			for (let j = i + 1; j < photos.length; j++) {
-				const photo2 = photos[j];
-
-				if (processed.has(photo2.id)) {
-					continue;
-				}
-
-				const embedding2 = embeddingMap.get(photo2.id);
-				if (!embedding2) {
-					continue;
-				}
-
-				const similarity = EmbeddingsProcessor.cosineSimilarity(embedding1, embedding2);
-
-				if (similarity >= duplicateThreshold) {
-					duplicateGroup.push(photo2.id);
-					processed.add(photo2.id);
-				}
-			}
-
-			if (duplicateGroup.length >= 2) {
-				duplicates.push({
-					photoIds: duplicateGroup,
-					similarities: [],
-					avgSimilarity: duplicateThreshold,
-					timeSpan: 0,
-					startTime: new Date(photo1.dateTaken),
-					endTime: new Date(photo1.dateTaken)
-				});
-				processed.add(photo1.id);
-			}
-		}
-
-		console.log(`Found ${duplicates.length} duplicate groups`);
-
-		return duplicates;
+		console.warn(
+			'Using legacy GroupingProcessor - consider migrating to clusterImagesWithOverlap for better memory efficiency'
+		);
+
+		// For legacy support, we'll use the old algorithm but this is not memory efficient
+		// In practice, this should be replaced with clusterImagesWithOverlap
+		const db = (await import('./db')).default;
+
+		// Use a small window size to simulate batching
+		return clusterImagesWithOverlap(
+			similarityThreshold,
+			30, // 30 minute windows
+			15, // 15 minute overlap
+			timeWindowMinutes,
+			db,
+			onProgress
+		);
 	}
 
 	/**
 	 * Get statistics about grouping results
 	 */
 	getGroupingStats(groups: PhotoGroup[]): GroupingStats {
-		const totalPhotosInGroups = groups.reduce((sum, group) => sum + group.photoIds.length, 0);
-
-		const avgGroupSize = groups.length > 0 ? totalPhotosInGroups / groups.length : 0;
-
-		const avgSimilarity =
-			groups.length > 0 ? groups.reduce((sum, g) => sum + g.avgSimilarity, 0) / groups.length : 0;
-
-		const groupSizes = groups.map((g) => g.photoIds.length);
-		const maxGroupSize = Math.max(...groupSizes, 0);
-		const minGroupSize = Math.min(...groupSizes, Infinity);
-
-		return {
-			totalGroups: groups.length,
-			totalPhotosInGroups,
-			avgGroupSize: avgGroupSize.toFixed(2),
-			avgSimilarity: avgSimilarity.toFixed(3),
-			maxGroupSize,
-			minGroupSize: minGroupSize === Infinity ? 0 : minGroupSize
-		};
+		return getGroupingStats(groups);
 	}
 }
 

@@ -3,7 +3,7 @@
 	import PhotoGrid from './PhotoGrid.svelte';
 
 	export let photosWithEmbeddings: number;
-	export let photos: Photo[]; // Legacy prop, not used anymore
+	export const photos: Photo[] = []; // Legacy prop, not used anymore
 	export let onStartGrouping: () => void;
 	export let onReindex: () => void;
 	export let onOpenSettings: () => void;

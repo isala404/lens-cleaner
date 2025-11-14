@@ -41,6 +41,10 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 PRICING_PER_PHOTO = 0.01  # $0.01 per photo
 PRICING_PER_UNIT = 1.00  # $1.00 per 100 photos
 PHOTOS_PER_UNIT = 100  # Charge per 100 photos
+VOLUME_LIMIT = int(
+    os.getenv("VOLUME_LIMIT", "30000")
+)  # Maximum photos before requiring sales contact
+SALES_EMAIL = os.getenv("SALES_EMAIL", "sales@tallisa.dev")
 
 # Polar Configuration
 POLAR_ACCESS_TOKEN = os.getenv("POLAR_ACCESS_TOKEN")
@@ -49,7 +53,13 @@ POLAR_FREE_PRODUCT_ID = os.getenv("POLAR_FREE_PRODUCT_ID")
 POLAR_WEBHOOK_SECRET = os.getenv("POLAR_WEBHOOK_SECRET")
 SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL", "support@tallisa.dev")
 
-required_env_vars = [POLAR_ACCESS_TOKEN, POLAR_PRODUCT_ID, POLAR_FREE_PRODUCT_ID, POLAR_WEBHOOK_SECRET, GOOGLE_API_KEY]
+required_env_vars = [
+    POLAR_ACCESS_TOKEN,
+    POLAR_PRODUCT_ID,
+    POLAR_FREE_PRODUCT_ID,
+    POLAR_WEBHOOK_SECRET,
+    GOOGLE_API_KEY,
+]
 for var in required_env_vars:
     if not var:
         raise ValueError(f"Environment variable {var} is not set")
@@ -84,6 +94,9 @@ class PricingResponse(BaseModel):
     total_cost: float
     amount_in_cents: int
     is_free: bool
+    volume_limited: bool = False
+    volume_limit: int = VOLUME_LIMIT
+    sales_email: str = SALES_EMAIL
 
 
 class CheckoutRequest(BaseModel):
@@ -237,6 +250,20 @@ async def calculate_pricing_endpoint(request: PricingRequest):
     if request.photo_count < 1:
         raise HTTPException(status_code=400, detail="Photo count must be at least 1")
 
+    # Check volume limit
+    if request.photo_count > VOLUME_LIMIT:
+        logger.info(f"Volume limit exceeded: {request.photo_count} > {VOLUME_LIMIT}")
+        return PricingResponse(
+            photo_count=request.photo_count,
+            charged_photos=0,
+            total_cost=0.0,
+            amount_in_cents=0,
+            is_free=False,
+            volume_limited=True,
+            volume_limit=VOLUME_LIMIT,
+            sales_email=SALES_EMAIL,
+        )
+
     # Calculate pricing using existing function
     charged_photos, total_cost, amount_in_cents = calculate_pricing(request.photo_count)
 
@@ -249,6 +276,9 @@ async def calculate_pricing_endpoint(request: PricingRequest):
         total_cost=total_cost,
         amount_in_cents=amount_in_cents,
         is_free=is_free,
+        volume_limited=False,
+        volume_limit=VOLUME_LIMIT,
+        sales_email=SALES_EMAIL,
     )
 
 
@@ -266,6 +296,14 @@ async def create_checkout(request: CheckoutRequest):
 
     if request.photo_count < 1:
         raise HTTPException(status_code=400, detail="Photo count must be at least 1")
+
+    # Check volume limit
+    if request.photo_count > VOLUME_LIMIT:
+        logger.info(f"Volume limit exceeded: {request.photo_count} > {VOLUME_LIMIT}")
+        raise HTTPException(
+            status_code=429,
+            detail=f"Volume limit exceeded. For processing more than {VOLUME_LIMIT} photos, please contact {SALES_EMAIL} for volume discount.",
+        )
 
     # Calculate pricing
     charged_photos, total_cost, expected_amount = calculate_pricing(request.photo_count)
@@ -293,7 +331,6 @@ async def create_checkout(request: CheckoutRequest):
         # Choose appropriate product price ID based on pricing
         product_id = POLAR_FREE_PRODUCT_ID if request.photo_count <= 50 else POLAR_PRODUCT_ID
 
-
         # Use the backend redirect endpoint for Polar.sh compatibility
         api_base_url = os.getenv("API_BASE_URL", "http://localhost:8000")
         success_url = f"{api_base_url}/v1/api/redirect?checkout_id={{CHECKOUT_ID}}&payment=success"
@@ -305,6 +342,7 @@ async def create_checkout(request: CheckoutRequest):
             "amount": expected_amount,
             "success_url": success_url,
             "metadata": metadata,
+            "allow_discount_codes": False,
         }
 
         if expected_amount < 50:
@@ -399,10 +437,10 @@ async def verify_payment(checkout_id: str):
         logger.info(f"Polar checkout status: {checkout.status}, checkout_id={checkout_id}")
 
         if checkout.status in ["confirmed", "succeeded", "SUCCEEDED"]:
-            # Get job_id from database
+            # Get job_id and expected amount from database
             async with aiosqlite.connect(DATABASE_PATH) as db:
                 async with db.execute(
-                    "SELECT id, photo_count, charged_photo_count FROM jobs WHERE polar_checkout_id = ?",
+                    "SELECT id, photo_count, charged_photo_count, expected_amount FROM jobs WHERE polar_checkout_id = ?",
                     (checkout_id,),
                 ) as cursor:
                     row = await cursor.fetchone()
@@ -411,18 +449,41 @@ async def verify_payment(checkout_id: str):
                 logger.error(f"Job not found for checkout_id={checkout_id}")
                 raise HTTPException(status_code=404, detail="Job not found")
 
-            job_id, photo_count, charged_photo_count = row
+            job_id, photo_count, charged_photo_count, expected_amount = row
 
-            # Update payment verification
+            # Verify the payment amount matches expected amount
+            actual_amount = getattr(checkout, "amount", None)
+
+            if actual_amount is not None and actual_amount != expected_amount:
+                # Amount mismatch - mark as tampered and reject
+                logger.error(
+                    f"Payment amount mismatch: job_id={job_id}, "
+                    f"expected={expected_amount}, actual={actual_amount}"
+                )
+
+                async with aiosqlite.connect(DATABASE_PATH) as db:
+                    await db.execute(
+                        "UPDATE jobs SET status = ?, amount_tampered = ?, actual_amount = ? WHERE id = ?",
+                        ("tampered", 1, actual_amount, job_id),
+                    )
+                    await db.commit()
+
+                # Return 402 Payment Required status code
+                raise HTTPException(
+                    status_code=402,
+                    detail=f"Payment amount mismatch. Expected ${expected_amount / 100:.2f}, received ${actual_amount / 100:.2f}. Please contact {SUPPORT_EMAIL} for assistance.",
+                )
+
+            # Update payment verification with actual amount
             async with aiosqlite.connect(DATABASE_PATH) as db:
                 await db.execute(
-                    "UPDATE jobs SET payment_verified = ?, polar_customer_id = ? WHERE id = ?",
-                    (1, checkout.customer_id, job_id),
+                    "UPDATE jobs SET payment_verified = ?, polar_customer_id = ?, actual_amount = ? WHERE id = ?",
+                    (1, checkout.customer_id, actual_amount, job_id),
                 )
                 await db.commit()
 
             logger.info(
-                f"Payment verified successfully: job_id={job_id}, checkout_id={checkout_id}"
+                f"Payment verified successfully: job_id={job_id}, checkout_id={checkout_id}, amount={actual_amount}"
             )
 
             return {
@@ -438,6 +499,9 @@ async def verify_payment(checkout_id: str):
             )
             return {"payment_verified": False, "status": checkout.status}
 
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
     except Exception as e:
         logger.error(f"Error verifying payment for checkout_id={checkout_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to verify payment: {str(e)}") from e

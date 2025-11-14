@@ -11,6 +11,9 @@ export interface PricingResponse {
 	total_cost: number;
 	amount_in_cents: number;
 	is_free: boolean;
+	volume_limited?: boolean;
+	volume_limit?: number;
+	sales_email?: string;
 }
 
 export interface CheckoutResponse {

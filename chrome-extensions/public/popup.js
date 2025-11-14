@@ -222,7 +222,10 @@ async function ensureContentScriptLoaded(tabId) {
  */
 async function handleClearData() {
 	// Check for auto-select data
-	const hasAutoSelectData = localStorage.getItem('autoSelectCheckoutId');
+	const hasAutoSelectData =
+		localStorage.getItem('autoSelectCheckoutId') ||
+		localStorage.getItem('autoSelectJobId') ||
+		localStorage.getItem('autoSelectState');
 
 	let confirmMessage =
 		'This will remove everything stored by Lens Cleaner.\n\n' +
@@ -254,6 +257,7 @@ async function handleClearData() {
 		// Clear auto-select data from localStorage
 		localStorage.removeItem('autoSelectState');
 		localStorage.removeItem('autoSelectJobId');
+		localStorage.removeItem('autoSelectCheckoutId');
 
 		// Update stats display immediately
 		document.getElementById('totalPhotos').textContent = '0';

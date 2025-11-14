@@ -1,4 +1,5 @@
 <script lang="ts">
+	/* eslint-disable svelte/infinite-reactive-loop */
 	import { createCheckout, calculatePricing } from '../lib/api';
 
 	export let show: boolean;
@@ -15,36 +16,54 @@
 	let chargedPhotos = 0;
 	let totalCost = 0;
 	let pricingLoaded = false;
-
-	// Load pricing when modal opens
-	$: if (show && photoCount > 0 && !pricingLoaded) {
-		loadPricing();
-	}
+	let hasStartedLoading = false;
+	let volumeLimited = false;
+	let volumeLimit = 0;
+	let salesEmail = '';
 
 	// Reset pricing state when modal closes
 	$: if (!show) {
 		pricingLoaded = false;
 		isLoadingPricing = false;
 		error = '';
+		hasStartedLoading = false;
+	}
+
+	// Load pricing when modal opens
+	import { onMount } from 'svelte';
+
+	onMount(() => {
+		return () => {
+			// Cleanup on unmount
+			pricingLoaded = false;
+			isLoadingPricing = false;
+			error = '';
+			hasStartedLoading = false;
+		};
+	});
+
+	// Watch for show changes
+	$: {
+		if (show && photoCount > 0 && !pricingLoaded && !hasStartedLoading) {
+			hasStartedLoading = true;
+			loadPricing();
+		}
 	}
 
 	async function loadPricing() {
-		// Prevent multiple simultaneous calls
-		if (isLoadingPricing) return;
-		
 		try {
 			isLoadingPricing = true;
 			error = '';
-			pricingLoaded = false;
-
 			const pricing = await calculatePricing(photoCount);
 			isFree = pricing.is_free;
 			chargedPhotos = pricing.charged_photos;
 			totalCost = pricing.total_cost;
+			volumeLimited = pricing.volume_limited || false;
+			volumeLimit = pricing.volume_limit || 0;
+			salesEmail = pricing.sales_email || '';
 			pricingLoaded = true;
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to calculate pricing';
-			pricingLoaded = false;
 		} finally {
 			isLoadingPricing = false;
 		}
@@ -158,42 +177,77 @@
 				</ul>
 			</div>
 
-			<!-- Pricing -->
-			<div class="mb-6 rounded-xl border-4 border-black bg-gray-50 p-6">
-				{#if isLoadingPricing}
-					<div class="flex items-center justify-center py-8">
-						<div
-							class="h-8 w-8 animate-spin rounded-full border-4 border-gray-300 border-t-black"
-						></div>
-						<span class="ml-3 font-semibold text-gray-700">Calculating pricing...</span>
+			<!-- Volume Limit Warning -->
+			{#if pricingLoaded && volumeLimited}
+				<div class="mb-6 rounded-xl border-4 border-red-500 bg-red-50 p-6">
+					<div class="mb-4 flex items-center gap-3">
+						<div class="flex h-12 w-12 items-center justify-center rounded-full bg-red-500 text-2xl">
+							🚫
+						</div>
+						<div>
+							<h3 class="text-xl font-black text-black">Volume Limit Exceeded</h3>
+							<p class="text-sm font-semibold text-gray-700">
+								You have {photoCount} photos, which exceeds our standard limit of {volumeLimit} photos
+							</p>
+						</div>
 					</div>
-				{:else}
+
 					<div class="mb-4 space-y-2">
-						<div class="flex items-center justify-between">
-							<span class="font-semibold text-gray-700">Total photos to analyze:</span>
-							<span class="text-xl font-black text-black">{photoCount}</span>
+						<p class="font-semibold text-gray-800">
+							For processing more than {volumeLimit} photos, please contact our sales team for a volume discount:
+						</p>
+						<div class="flex items-center justify-center">
+							<a
+								href="mailto:{salesEmail}"
+								class="shadow-brutalist hover:shadow-brutalist-lg inline-flex items-center gap-2 rounded-xl border-4 border-black bg-red-500 px-6 py-3 font-bold text-white transition-all hover:translate-x-[-2px] hover:translate-y-[-2px]"
+							>
+								📧 Contact Sales: {salesEmail}
+							</a>
 						</div>
-						{#if !isFree}
+					</div>
+
+					<p class="text-center text-sm text-gray-600">
+						Our sales team will help you with bulk processing options and special pricing
+					</p>
+				</div>
+			{:else}
+				<!-- Pricing -->
+				<div class="mb-6 rounded-xl border-4 border-black bg-gray-50 p-6">
+					{#if isLoadingPricing}
+						<div class="flex items-center justify-center py-8">
+							<div
+								class="h-8 w-8 animate-spin rounded-full border-4 border-gray-300 border-t-black"
+							></div>
+							<span class="ml-3 font-semibold text-gray-700">Calculating pricing...</span>
+						</div>
+					{:else}
+						<div class="mb-4 space-y-2">
 							<div class="flex items-center justify-between">
-								<span class="font-semibold text-gray-700">Charged for:</span>
-								<span class="font-mono text-lg font-bold text-black">{chargedPhotos} photos</span>
+								<span class="font-semibold text-gray-700">Total photos to analyze:</span>
+								<span class="text-xl font-black text-black">{photoCount}</span>
 							</div>
-						{/if}
-					</div>
-					<div class="border-t-4 border-black pt-4">
-						<div class="flex items-center justify-between">
-							<span class="text-lg font-black text-gray-900">Total Cost:</span>
-							<span class="text-3xl font-black text-black">
-								{#if isFree}
-									FREE
-								{:else}
-									${totalCost.toFixed(2)}
-								{/if}
-							</span>
+							{#if !isFree}
+								<div class="flex items-center justify-between">
+									<span class="font-semibold text-gray-700">Charged for:</span>
+									<span class="font-mono text-lg font-bold text-black">{chargedPhotos} photos</span>
+								</div>
+							{/if}
 						</div>
-					</div>
-				{/if}
-			</div>
+						<div class="border-t-4 border-black pt-4">
+							<div class="flex items-center justify-between">
+								<span class="text-lg font-black text-gray-900">Total Cost:</span>
+								<span class="text-3xl font-black text-black">
+									{#if isFree}
+										FREE
+									{:else}
+										${totalCost.toFixed(2)}
+									{/if}
+								</span>
+							</div>
+						</div>
+					{/if}
+				</div>
+			{/if}
 
 			{#if !isFree}
 				<!-- Amount Warning -->
@@ -216,30 +270,41 @@
 			{/if}
 
 			<!-- Actions -->
-			<div class="flex gap-3">
-				<button
-					onclick={onClose}
-					disabled={isSubmitting}
-					class="shadow-brutalist hover:shadow-brutalist-lg flex-1 rounded-xl border-4 border-black bg-gray-200 py-3 font-bold text-black transition-all hover:translate-x-[-2px] hover:translate-y-[-2px] disabled:opacity-50"
-				>
-					Cancel
-				</button>
-				<button
-					onclick={handlePay}
-					disabled={isSubmitting || isLoadingPricing || !pricingLoaded}
-					class="shadow-brutalist hover:shadow-brutalist-lg flex-1 rounded-xl border-4 border-black bg-gradient-to-r from-purple-500 to-pink-500 py-3 font-black text-white transition-all hover:translate-x-[-2px] hover:translate-y-[-2px] disabled:opacity-50 disabled:cursor-not-allowed"
-				>
-					{#if isLoadingPricing || !pricingLoaded}
-						⏳ Calculating...
-					{:else if isSubmitting}
-						⏳ Processing...
-					{:else if isFree}
-						🎉 Start Free Analysis
-					{:else}
-						💳 Proceed to Payment
-					{/if}
-				</button>
-			</div>
+			{#if pricingLoaded && volumeLimited}
+				<div class="flex gap-3">
+					<button
+						onclick={onClose}
+						class="shadow-brutalist hover:shadow-brutalist-lg w-full rounded-xl border-4 border-black bg-gray-200 py-3 font-bold text-black transition-all hover:translate-x-[-2px] hover:translate-y-[-2px]"
+					>
+						Close
+					</button>
+				</div>
+			{:else}
+				<div class="flex gap-3">
+					<button
+						onclick={onClose}
+						disabled={isSubmitting}
+						class="shadow-brutalist hover:shadow-brutalist-lg flex-1 rounded-xl border-4 border-black bg-gray-200 py-3 font-bold text-black transition-all hover:translate-x-[-2px] hover:translate-y-[-2px] disabled:opacity-50"
+					>
+						Cancel
+					</button>
+					<button
+						onclick={handlePay}
+						disabled={isSubmitting || isLoadingPricing || !pricingLoaded}
+						class="shadow-brutalist hover:shadow-brutalist-lg flex-1 rounded-xl border-4 border-black bg-gradient-to-r from-purple-500 to-pink-500 py-3 font-black text-white transition-all hover:translate-x-[-2px] hover:translate-y-[-2px] disabled:cursor-not-allowed disabled:opacity-50"
+					>
+						{#if isLoadingPricing || !pricingLoaded}
+							⏳ Calculating...
+						{:else if isSubmitting}
+							⏳ Processing...
+						{:else if isFree}
+							🎉 Start Free Analysis
+						{:else}
+							💳 Proceed to Payment
+						{/if}
+					</button>
+				</div>
+			{/if}
 
 			<!-- Support -->
 			<p class="mt-4 text-center text-xs text-gray-500">
