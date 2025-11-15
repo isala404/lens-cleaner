@@ -603,10 +603,10 @@ async def webhook_handler(request: Request):
                 logger.error(f"Error processing order.created event: {e}")
 
         elif "checkout.created" in event_str:
-            logger.info(f"Checkout created event detected")
+            logger.info("Checkout created event detected")
 
         elif "checkout.updated" in event_str:
-            logger.info(f"Checkout updated event detected")
+            logger.info("Checkout updated event detected")
 
         elif "checkout.completed" in event_str:
             logger.info("Checkout completed event detected")
