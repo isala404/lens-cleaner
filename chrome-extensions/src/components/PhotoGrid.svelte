@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import type { Photo } from '../lib/db';
 	import { appStore, isPhotoSelected } from '../stores/appStore';
 	import { SvelteMap } from 'svelte/reactivity';
@@ -21,6 +21,8 @@
 	let loadedCount = 0;
 	let isLoading = false;
 	let scrollContainer: HTMLElement | null = null;
+	let sentinelElement: HTMLElement | null = null;
+	let intersectionObserver: IntersectionObserver | null = null;
 
 	let hoveredPhotoId: string | null = null;
 	// Track selection state for each photo
@@ -38,6 +40,17 @@
 		}
 	});
 
+	// Cleanup on destroy
+	onDestroy(() => {
+		if (intersectionObserver) {
+			intersectionObserver.disconnect();
+		}
+		if (scrollContainer) {
+			scrollContainer.removeEventListener('scroll', checkScroll);
+		}
+		window.removeEventListener('scroll', checkWindowScroll);
+	});
+
 	async function loadMore(count: number) {
 		if (!enablePagination || totalPhotos === undefined) return;
 		if (isLoading || loadedCount >= totalPhotos) return;
@@ -53,27 +66,60 @@
 		}
 	}
 
-	function setupScrollListener() {
-		const checkScroll = () => {
-			if (!scrollContainer) return;
-			const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
-			// Load more when 80% scrolled
-			if (scrollTop + clientHeight > scrollHeight * 0.8 && !isLoading) {
-				loadMore(BATCH_SIZE);
-			}
-		};
+	function checkScroll() {
+		if (!scrollContainer) return;
+		const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
+		// Load more when 80% scrolled
+		if (scrollTop + clientHeight > scrollHeight * 0.8 && !isLoading) {
+			loadMore(BATCH_SIZE);
+		}
+	}
 
-		// Find scroll container (retry a few times if not ready)
+	function setupScrollListener() {
+		// Try to find scroll container
 		let retries = 0;
 		const findContainer = setInterval(() => {
 			scrollContainer = document.querySelector('.photo-grid-container');
 			if (scrollContainer || retries++ > 10) {
 				clearInterval(findContainer);
 				if (scrollContainer) {
-					scrollContainer.addEventListener('scroll', checkScroll);
+					// Check if container is actually scrollable
+					const isScrollable = scrollContainer.scrollHeight > scrollContainer.clientHeight;
+					if (isScrollable) {
+						// Container is scrollable, use scroll event
+						scrollContainer.addEventListener('scroll', checkScroll);
+					} else {
+						// Container is not scrollable, use Intersection Observer on sentinel
+						setupIntersectionObserver();
+					}
+				} else {
+					// No container found, use window scroll or Intersection Observer
+					setupIntersectionObserver();
 				}
 			}
 		}, 100);
+	}
+
+	function setupIntersectionObserver() {
+		// Use Intersection Observer API as fallback - works with any scroll container
+		if (typeof IntersectionObserver === 'undefined') {
+			// Fallback to window scroll if IntersectionObserver not available
+			window.addEventListener('scroll', checkWindowScroll);
+			return;
+		}
+
+		// Observer will be set up when sentinel element is available (via reactive statement)
+	}
+
+	function checkWindowScroll() {
+		if (isLoading || loadedCount >= (totalPhotos || 0)) return;
+		const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+		const windowHeight = window.innerHeight;
+		const documentHeight = document.documentElement.scrollHeight;
+		// Load more when 80% scrolled
+		if (scrollTop + windowHeight > documentHeight * 0.8) {
+			loadMore(BATCH_SIZE);
+		}
 	}
 
 	// Load selection state for all photos
@@ -95,6 +141,24 @@
 	// Subscribe to selectedPhotosCount changes to refresh states
 	$: if ($appStore.selectedPhotosCount !== undefined) {
 		loadSelectionStates();
+	}
+
+	// Set up Intersection Observer when sentinel element is available
+	$: if (enablePagination && sentinelElement && typeof IntersectionObserver !== 'undefined' && !intersectionObserver) {
+		intersectionObserver = new IntersectionObserver(
+			(entries) => {
+				entries.forEach((entry) => {
+					if (entry.isIntersecting && !isLoading && loadedCount < (totalPhotos || 0)) {
+						loadMore(BATCH_SIZE);
+					}
+				});
+			},
+			{
+				root: scrollContainer || null, // Use container if scrollable, otherwise use viewport
+				rootMargin: '200px' // Start loading 200px before reaching the sentinel
+			}
+		);
+		intersectionObserver.observe(sentinelElement);
 	}
 
 	function openInGooglePhotos(url: string | undefined, event: MouseEvent | KeyboardEvent) {
@@ -266,6 +330,11 @@
 			{/if}
 		{/each}
 	</div>
+
+	<!-- Sentinel element for Intersection Observer (pagination mode) -->
+	{#if enablePagination && totalPhotos !== undefined && loadedCount < totalPhotos}
+		<div bind:this={sentinelElement} class="photo-grid-sentinel" style="height: 1px;"></div>
+	{/if}
 
 	<!-- Loading indicator (pagination mode) -->
 	{#if enablePagination && isLoading}
