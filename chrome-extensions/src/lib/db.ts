@@ -44,7 +44,7 @@ export interface Stats {
 	lastGroupingTime?: number;
 }
 
-class LensDB {
+class PhotoSweepDB {
 	private db: IDBDatabase | null = null;
 
 	/**
@@ -1418,5 +1418,5 @@ class LensDB {
 }
 
 // Export singleton instance
-const db = new LensDB();
+const db = new PhotoSweepDB();
 export default db;

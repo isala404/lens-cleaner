@@ -1,5 +1,5 @@
 """
-Lens Cleaner Backend API
+Photo Sweep Backend API
 Handles paid auto-select feature with Polar payments and Gemini AI integration
 """
 
@@ -35,7 +35,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Configuration
-DATABASE_PATH = "lens_cleaner.db"
+DATABASE_PATH = "photo_sweep.db"
 UPLOAD_DIR = Path("uploads")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 PRICING_PER_PHOTO = 0.01  # $0.01 per photo
@@ -71,7 +71,7 @@ logger.info("Polar SDK initialized successfully")
 # Ensure upload directory exists
 UPLOAD_DIR.mkdir(exist_ok=True)
 
-app = FastAPI(title="Lens Cleaner API", version="2.0.0")
+app = FastAPI(title="Photo Sweep API", version="1.0.0")
 
 # CORS middleware
 app.add_middleware(
@@ -172,7 +172,7 @@ async def startup_event():
 @app.get("/")
 async def root():
     """Health check endpoint"""
-    return {"status": "ok", "service": "Lens Cleaner API", "version": "2.0.0"}
+    return {"status": "ok", "service": "Photo Sweep API", "version": "1.0.0"}
 
 
 @app.get("/v1/api/redirect")
@@ -1050,5 +1050,5 @@ async def refund_job(job_id: str):
 if __name__ == "__main__":
     import uvicorn
 
-    logger.info("Starting Lens Cleaner API")
+    logger.info("Starting Photo Sweep API")
     uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")

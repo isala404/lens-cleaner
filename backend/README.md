@@ -1,6 +1,6 @@
-# Lens Cleaner Backend
+# Photo Sweep Backend
 
-Backend API for the Lens Cleaner auto-select feature, powered by Google Gemini AI.
+Backend API for the Photo Sweep auto-select feature, powered by Google Gemini AI.
 
 ## Setup
 

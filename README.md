@@ -1,4 +1,4 @@
-# Lens Cleaner
+# Photo Sweep
 
 AI-powered Chrome extension to find and delete duplicate photos from Google Photos.
 
@@ -193,7 +193,7 @@ When the backend is running, visit:
 ## Project Structure
 
 ```
-lens-cleaner/
+photo-sweep/
 ├── chrome-extensions/          # Chrome extension
 │   ├── src/
 │   │   ├── components/        # Svelte components
