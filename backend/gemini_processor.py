@@ -245,7 +245,7 @@ class GeminiProcessor:
             uploaded_file = self.client.files.upload(
                 file=str(jsonl_path),
                 config=types.UploadFileConfig(
-                    display_name=f"photo-sweep-{job_id}", mime_type="text/plain"
+                    display_name=f"top-pics-{job_id}", mime_type="text/plain"
                 ),
             )
             return uploaded_file
@@ -258,7 +258,7 @@ class GeminiProcessor:
         batch_job = self.client.batches.create(
             model=BATCH_MODEL_ID,
             src=uploaded_file.name,
-            config=types.CreateBatchJobConfig(display_name=f"photo-sweep-{job_id}"),
+            config=types.CreateBatchJobConfig(display_name=f"top-pics-{job_id}"),
         )
         return batch_job
 

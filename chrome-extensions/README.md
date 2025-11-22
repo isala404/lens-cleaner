@@ -1,6 +1,6 @@
-# PhotoSweep: Duplicates Cleaner for Google Photos
+# TopPics: Smart duplicate remover for Google Photos
 
-Smartly identify and sweep away duplicate photos, free up cloud storage.
+Smart duplicate remover for Google Photos.
 
 ## Features
 
@@ -13,7 +13,7 @@ Smartly identify and sweep away duplicate photos, free up cloud storage.
 
 ## How It Works
 
-1. **Scan Your Library**: Open Google Photos and click PhotoSweep to analyze your library
+1. **Scan Your Library**: Open Google Photos and click TopPics to analyze your library
 2. **Smart Detection**: Uses CLIP AI to analyze visual content and identify duplicates
 3. **Intelligent Grouping**: Groups similar photos based on visual similarity and capture time
 4. **Review & Clean**: Review detected duplicates and safely delete them with one click
@@ -121,7 +121,7 @@ Access settings by clicking the ⚙️ icon:
 
 ### Advanced
 
-PhotoSweep stores all data locally in IndexedDB under the database name `PhotoSweepDB`. You can clear all data using the "Clear All Data" button in the extension popup.
+TopPics stores all data locally in IndexedDB under the database name `TopPicsDB`. You can clear all data using the "Clear All Data" button in the extension popup.
 
 ## Architecture
 

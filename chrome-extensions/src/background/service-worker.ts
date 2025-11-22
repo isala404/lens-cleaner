@@ -1,5 +1,5 @@
 /**
- * Background Service Worker for PhotoSweep
+ * Background Service Worker for TopPics
  * Handles photo storage, embedding calculations, and grouping
  */
 
@@ -26,7 +26,7 @@ let processingProgress = {
  * Initialize the service worker
  */
 async function initialize() {
-	console.log('PhotoSweep service worker starting...');
+	console.log('TopPics service worker starting...');
 
 	try {
 		// Initialize database

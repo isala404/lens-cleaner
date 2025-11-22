@@ -1,6 +1,6 @@
-# Photo Sweep Backend
+# TopPics Backend
 
-Backend API for the Photo Sweep auto-select feature, powered by Google Gemini AI.
+Backend API for the TopPics auto-select feature, powered by Google Gemini AI.
 
 ## Setup
 

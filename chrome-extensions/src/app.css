@@ -1,23 +1,23 @@
 @import 'tailwindcss';
 
-/* PhotoSweep Design System - Modern, Clean & Premium Aesthetics */
+/* TopPics Design System - Modern, Clean & Premium Aesthetics */
 
 @theme {
-	/* PhotoSweep Pink Palette - Vibrant & Modern */
+	/* TopPics Pink Palette - Vibrant & Modern */
 	--color-pastel-pink-50: #faf5f8;
 	--color-pastel-pink-100: #f5e8ef;
 	--color-pastel-pink-200: #edcfe0;
 	--color-pastel-pink-300: #e8b8cc;
 	--color-pastel-pink-400: #e29bb8;
 
-	/* PhotoSweep Purple Palette - Premium & Sophisticated */
+	/* TopPics Purple Palette - Premium & Sophisticated */
 	--color-pastel-purple-50: #faf8ff;
 	--color-pastel-purple-100: #f0ebff;
 	--color-pastel-purple-200: #e0d5ff;
 	--color-pastel-purple-300: #c9b0f0;
 	--color-pastel-purple-400: #a878db;
 
-	/* PhotoSweep Blue Palette - Clean & Professional */
+	/* TopPics Blue Palette - Clean & Professional */
 	--color-pastel-blue-50: #f0f7ff;
 	--color-pastel-blue-100: #deeeff;
 	--color-pastel-blue-200: #bce1ff;

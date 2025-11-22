@@ -1,9 +1,9 @@
 /**
- * IndexedDB wrapper for PhotoSweep
+ * IndexedDB wrapper for TopPics
  * Stores photos, embeddings, and groups
  */
 
-const DB_NAME = 'PhotoSweepDB';
+const DB_NAME = 'TopPicsDB';
 const DB_VERSION = 1;
 
 export interface Photo {
@@ -44,7 +44,7 @@ export interface Stats {
 	lastGroupingTime?: number;
 }
 
-class PhotoSweepDB {
+class TopPicsDB {
 	private db: IDBDatabase | null = null;
 
 	/**
@@ -1418,5 +1418,5 @@ class PhotoSweepDB {
 }
 
 // Export singleton instance
-const db = new PhotoSweepDB();
+const db = new TopPicsDB();
 export default db;

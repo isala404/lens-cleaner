@@ -78,7 +78,7 @@ let embeddingsProcessor: EmbeddingsProcessor | null = null;
 function saveProcessingState(progress: ProcessingProgress, originalTotal?: number) {
 	if (progress.isProcessing) {
 		localStorage.setItem(
-			'photoSweepProcessingState',
+			'topPicsProcessingState',
 			JSON.stringify({
 				type: progress.type,
 				current: progress.current,
@@ -89,14 +89,14 @@ function saveProcessingState(progress: ProcessingProgress, originalTotal?: numbe
 			})
 		);
 	} else {
-		localStorage.removeItem('photoSweepProcessingState');
+		localStorage.removeItem('topPicsProcessingState');
 	}
 }
 
 // Restore processing state
 function getSavedProcessingState(): (ProcessingProgress & { originalTotal?: number }) | null {
 	try {
-		const saved = localStorage.getItem('photoSweepProcessingState');
+		const saved = localStorage.getItem('topPicsProcessingState');
 		if (!saved) return null;
 
 		const state = JSON.parse(saved);
@@ -104,7 +104,7 @@ function getSavedProcessingState(): (ProcessingProgress & { originalTotal?: numb
 		const age = Date.now() - state.timestamp;
 		if (age > 3600000) {
 			// 1 hour
-			localStorage.removeItem('photoSweepProcessingState');
+			localStorage.removeItem('topPicsProcessingState');
 			return null;
 		}
 
@@ -134,13 +134,13 @@ export async function initializeApp() {
 			appStore.update((state) => ({ ...state, settings: savedSettings }));
 		} else {
 			// Migrate from localStorage if exists
-			const localStorageSettings = localStorage.getItem('photoSweepSettings');
+			const localStorageSettings = localStorage.getItem('topPicsSettings');
 			if (localStorageSettings) {
 				const settings = JSON.parse(localStorageSettings);
 				await db.setMetadata('settings', settings);
 				appStore.update((state) => ({ ...state, settings }));
 				// Clean up old localStorage
-				localStorage.removeItem('photoSweepSettings');
+				localStorage.removeItem('topPicsSettings');
 			}
 		}
 
@@ -174,7 +174,7 @@ export async function initializeApp() {
 				console.log('Resuming interrupted grouping process...');
 			} else {
 				// No work to resume, clear saved state
-				localStorage.removeItem('photoSweepProcessingState');
+				localStorage.removeItem('topPicsProcessingState');
 			}
 		}
 	} catch (error) {
@@ -296,7 +296,7 @@ export async function calculateEmbeddings() {
 					message: ''
 				}
 			}));
-			localStorage.removeItem('photoSweepProcessingState');
+			localStorage.removeItem('topPicsProcessingState');
 			return alreadyProcessed;
 		}
 
@@ -350,7 +350,7 @@ export async function calculateEmbeddings() {
 				message: ''
 			}
 		}));
-		localStorage.removeItem('photoSweepProcessingState');
+		localStorage.removeItem('topPicsProcessingState');
 
 		return processed;
 	} catch (error) {
@@ -365,7 +365,7 @@ export async function calculateEmbeddings() {
 				message: ''
 			}
 		}));
-		localStorage.removeItem('photoSweepProcessingState');
+		localStorage.removeItem('topPicsProcessingState');
 		throw error;
 	}
 }
@@ -379,7 +379,7 @@ export async function groupPhotos() {
 
 	// Clear any existing saved state to start fresh
 	if (savedProgress?.type === 'grouping') {
-		localStorage.removeItem('photoSweepProcessingState');
+		localStorage.removeItem('topPicsProcessingState');
 	}
 
 	appStore.update((s) => ({
@@ -411,7 +411,7 @@ export async function groupPhotos() {
 					message: ''
 				}
 			}));
-			localStorage.removeItem('photoSweepProcessingState');
+			localStorage.removeItem('topPicsProcessingState');
 			return 0;
 		}
 
@@ -507,7 +507,7 @@ export async function groupPhotos() {
 				message: ''
 			}
 		}));
-		localStorage.removeItem('photoSweepProcessingState');
+		localStorage.removeItem('topPicsProcessingState');
 
 		return groups.length;
 	} catch (error) {
@@ -522,7 +522,7 @@ export async function groupPhotos() {
 				message: ''
 			}
 		}));
-		localStorage.removeItem('photoSweepProcessingState');
+		localStorage.removeItem('topPicsProcessingState');
 		throw error;
 	}
 }
@@ -531,7 +531,7 @@ export async function groupPhotos() {
 export async function clearAllData() {
 	try {
 		await db.clearAll();
-		localStorage.removeItem('photoSweepProcessingState');
+		localStorage.removeItem('topPicsProcessingState');
 		appStore.update((s) => ({
 			...s,
 			photos: [],

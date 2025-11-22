@@ -1,5 +1,5 @@
 /**
- * API Client for PhotoSweep Backend
+ * API Client for TopPics Backend
  * Handles communication with the Python FastAPI backend
  */
 

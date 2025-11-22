@@ -8,7 +8,7 @@ on:
       - '.github/workflows/docker.yml'
 
 env:
-  IMAGE_NAME: tallisa/photo-sweep/backend
+  IMAGE_NAME: tallisa/toppics/backend
 
 jobs:
   test:

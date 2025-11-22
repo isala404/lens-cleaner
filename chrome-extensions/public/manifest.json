@@ -1,8 +1,8 @@
 {
 	"manifest_version": 3,
-	"name": "PhotoSweep: Duplicates Cleaner for Google Photos",
+	"name": "TopPics: Smart duplicate remover for Google Photos",
 	"version": "1.0.0",
-	"description": "Smartly identify and sweep away duplicate photos, free up cloud storage",
+	"description": "Smartly identify and clean up duplicate or similar photos to unclutter your Google Photos library",
 	"permissions": ["storage", "activeTab", "tabs", "scripting"],
 	"host_permissions": [
 		"https://photos.google.com/*",
@@ -22,7 +22,7 @@
 	],
 	"action": {
 		"default_popup": "popup.html",
-		"default_title": "PhotoSweep"
+		"default_title": "TopPics"
 	},
 	"icons": {
 		"16": "favicon.png",

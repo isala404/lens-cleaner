@@ -22,7 +22,7 @@ let deletionProgress: {
 
 // Listen for messages from popup/service worker
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-	console.log('🧹 PhotoSweep received message:', message.action);
+	console.log('🧹 TopPics received message:', message.action);
 
 	if (message.action === 'ping') {
 		// Respond to ping to confirm content script is loaded
@@ -606,7 +606,7 @@ function showDeletionProgressBanner() {
 	hideDeletionProgressBanner();
 
 	const banner = document.createElement('div');
-	banner.id = 'photosweep-deletion-banner';
+	banner.id = 'toppics-deletion-banner';
 	banner.style.cssText = `
     position: fixed;
     top: 20px;
@@ -636,7 +636,7 @@ function showDeletionProgressBanner() {
         border-radius: 50%;
         animation: spin 1s linear infinite;
       "></div>
-      <div style="font-size: 16px; font-weight: 600;">🧹 PhotoSweep</div>
+      <div style="font-size: 16px; font-weight: 600;">🧹 TopPics</div>
     </div>
     <div id="deletion-progress-message" style="font-size: 13px; opacity: 0.95; margin-left: 28px;">
       Initializing...
@@ -672,11 +672,11 @@ function updateDeletionProgress(message: string, count: number) {
 }
 
 function hideDeletionProgressBanner() {
-	const banner = document.getElementById('photosweep-deletion-banner');
+	const banner = document.getElementById('toppics-deletion-banner');
 	if (banner) {
 		banner.remove();
 	}
 }
 
-console.log('🧹 PhotoSweep content script loaded and ready!');
+console.log('🧹 TopPics content script loaded and ready!');
 console.log('🧹 Waiting for startScraping message...');

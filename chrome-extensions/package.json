@@ -1,8 +1,8 @@
 {
-	"name": "photosweep",
+	"name": "toppics",
 	"private": true,
 	"version": "1.0.0",
-	"description": "PhotoSweep: Duplicates Cleaner for Google Photos - Smartly identify and sweep away duplicate photos",
+	"description": "TopPics: Smart duplicate remover for Google Photos",
 	"type": "module",
 	"scripts": {
 		"dev": "vite",
