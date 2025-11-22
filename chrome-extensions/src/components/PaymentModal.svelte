@@ -186,7 +186,9 @@
 			{#if pricingLoaded && volumeLimited}
 				<div class="mb-6 rounded-xl border-4 border-red-500 bg-red-50 p-6">
 					<div class="mb-4 flex items-center gap-3">
-						<div class="flex h-12 w-12 items-center justify-center rounded-full bg-red-500 text-2xl">
+						<div
+							class="flex h-12 w-12 items-center justify-center rounded-full bg-red-500 text-2xl"
+						>
 							🚫
 						</div>
 						<div>
@@ -199,7 +201,8 @@
 
 					<div class="mb-4 space-y-2">
 						<p class="font-semibold text-gray-800">
-							For processing more than {volumeLimit} photos, please contact our sales team for a volume discount:
+							For processing more than {volumeLimit} photos, please contact our sales team for a volume
+							discount:
 						</p>
 						<div class="flex items-center justify-center">
 							<a

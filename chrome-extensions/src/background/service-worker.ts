@@ -365,6 +365,18 @@ async function handleClearAllData(force: boolean = false) {
 
 	console.log('Clearing all data...');
 	await db.clearAll();
+
+	// Broadcast message to clear localStorage (if UI is open)
+	try {
+		// Note: This will fail if no listeners are active (UI closed), which is expected
+		await chrome.runtime.sendMessage({ action: 'clearLocalStorage' });
+	} catch {
+		// Ignore errors
+	}
+
+	// Set flag in chrome.storage.local so UI can clear localStorage on next open
+	await chrome.storage.local.set({ needsLocalStorageClear: true });
+
 	processingProgress = {
 		total: 0,
 		processed: 0,

@@ -108,21 +108,25 @@
 	function setupGroupScrollListener() {
 		scrollHandler = () => {
 			if (isLoadingGroups || loadedGroupsCount >= totalGroupsCount) return;
-			
+
 			// Check window scroll (most common case)
 			const windowHeight = window.innerHeight;
 			const documentHeight = document.documentElement.scrollHeight;
 			const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-			
+
 			// Load more when 80% scrolled
 			if (scrollTop + windowHeight > documentHeight * 0.8) {
 				loadMoreGroups();
 				return;
 			}
-			
+
 			// Also check container scroll if it exists and is scrollable
 			if (groupsContainer) {
-				const { scrollTop: containerScrollTop, scrollHeight: containerScrollHeight, clientHeight: containerClientHeight } = groupsContainer;
+				const {
+					scrollTop: containerScrollTop,
+					scrollHeight: containerScrollHeight,
+					clientHeight: containerClientHeight
+				} = groupsContainer;
 				if (containerScrollTop + containerClientHeight > containerScrollHeight * 0.8) {
 					loadMoreGroups();
 				}
@@ -162,7 +166,11 @@
 	// We don't want to reset just because displayGroups stays at initial size while we paginate
 	$: if (!enableGroupPagination) {
 		paginatedGroups = displayGroups;
-	} else if (enableGroupPagination && isInitialized && displayGroups.length !== initialDisplayGroupsLength) {
+	} else if (
+		enableGroupPagination &&
+		isInitialized &&
+		displayGroups.length !== initialDisplayGroupsLength
+	) {
 		// displayGroups was refreshed/reset (e.g., after regroup), so reset pagination
 		initialDisplayGroupsLength = displayGroups.length;
 		loadedGroupsCount = displayGroups.length;

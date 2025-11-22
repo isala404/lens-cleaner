@@ -15,7 +15,8 @@
 		togglePhotoSelection,
 		selectAllInGroup,
 		clearSelection,
-		updateSettings
+		updateSettings,
+		clearLocalStorage
 	} from './stores/appStore';
 
 	import db, { type Group, type Photo } from './lib/db';
@@ -158,10 +159,35 @@
 	}
 
 	// Cache for group photos to avoid re-fetching
-	let groupPhotosCache = new SvelteMap<string, Photo[]>();
 	let ungroupedPhotos: Photo[] = [];
 
+	// Listen for messages to clear localStorage
+	const messageListener = (message: { action: string }) => {
+		if (message.action === 'clearLocalStorage') {
+			clearLocalStorage();
+			console.log('Cleared localStorage based on message from service worker');
+		}
+	};
+
+	onDestroy(() => {
+		chrome.runtime.onMessage.removeListener(messageListener);
+	});
+
 	onMount(async () => {
+		chrome.runtime.onMessage.addListener(messageListener);
+
+		// Check if we need to clear localStorage (from SW action)
+		try {
+			const result = await chrome.storage.local.get('needsLocalStorageClear');
+			if (result.needsLocalStorageClear) {
+				clearLocalStorage();
+				await chrome.storage.local.remove('needsLocalStorageClear');
+				console.log('Cleared localStorage based on flag from service worker');
+			}
+		} catch {
+			// Ignore if chrome.storage not available
+		}
+
 		await initializeApp();
 		// Initialize editing settings from appStore
 		editingSettings.similarityThreshold = $appStore.settings.similarityThreshold;
@@ -231,12 +257,12 @@
 				if (verificationResponse.payment_verified) {
 					// Save job ID from verification response
 					const jobId = verificationResponse.job_id;
-					
+
 					// Track revenue with verified amount from backend
 					// Divide by 100 because Polar uses cents, but Umami/Analytics usually expect dollars/units
 					const amount = (verificationResponse.amount || 0) / 100;
 					trackRevenue(amount, 'USD', { jobId, checkoutId });
-					
+
 					autoSelectJobId = jobId;
 					localStorage.setItem('autoSelectJobId', jobId);
 					await db.saveAutoSelectJob({
@@ -267,7 +293,9 @@
 				}
 			} catch (error) {
 				console.error('Error verifying payment:', error);
-				trackEvent('Payment Verification Error', { error: error instanceof Error ? error.message : String(error) });
+				trackEvent('Payment Verification Error', {
+					error: error instanceof Error ? error.message : String(error)
+				});
 				autoSelectError = error instanceof Error ? error.message : 'Failed to verify payment';
 				autoSelectStatus = 'failed';
 				canRetryAutoSelect = true;
@@ -839,7 +867,9 @@
 			ungroupedPhotos = allPhotos.filter((photo) => !groupedPhotoIds.has(photo.id));
 
 			// Update count of photos eligible for auto-select (with embeddings and in groups)
-			photosForAutoSelectCount = allPhotos.filter((p) => p.hasEmbedding && p.groupId !== null).length;
+			photosForAutoSelectCount = allPhotos.filter(
+				(p) => p.hasEmbedding && p.groupId !== null
+			).length;
 		} catch (error) {
 			console.error('Error loading ungrouped photos:', error);
 			ungroupedPhotos = [];
@@ -886,6 +916,9 @@
 
 	// Track blob URLs for cleanup
 	let blobUrlCache = new SvelteMap<string, string>();
+
+	// Cache for group photos
+	let groupPhotosCache = new SvelteMap<string, Photo[]>();
 
 	// Count of photos eligible for auto-select (with embeddings and in groups)
 	let photosForAutoSelectCount = 0;

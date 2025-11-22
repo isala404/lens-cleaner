@@ -527,11 +527,23 @@ export async function groupPhotos() {
 	}
 }
 
+// Clear all localStorage data
+export function clearLocalStorage() {
+	const keys = [
+		'topPicsProcessingState',
+		'topPicsSettings',
+		'autoSelectState',
+		'autoSelectJobId',
+		'autoSelectCheckoutId'
+	];
+	keys.forEach((key) => localStorage.removeItem(key));
+}
+
 // Clear all data
 export async function clearAllData() {
 	try {
 		await db.clearAll();
-		localStorage.removeItem('topPicsProcessingState');
+		clearLocalStorage();
 		appStore.update((s) => ({
 			...s,
 			photos: [],

@@ -182,7 +182,7 @@ async function getTabScanningStatus(tabId) {
 
 		const response = await chrome.tabs.sendMessage(tabId, { action: 'getScrapingStatus' });
 		return response || { isActive: false };
-	} catch (e) {
+	} catch {
 		return { isActive: false };
 	}
 }
@@ -220,7 +220,7 @@ function render() {
 			elements.startScan.classList.remove('hidden');
 			elements.startScan.textContent = '🔍 Find Duplicates';
 			elements.startScan.classList.add('btn-success');
-			
+
 			elements.clearData.classList.add('hidden');
 			elements.openDashboard.style.display = 'none';
 			break;
@@ -228,7 +228,7 @@ function render() {
 		case STATES.IDLE_WITH_DATA:
 			elements.onGooglePhotos.classList.remove('hidden');
 			elements.groupsRow.classList.remove('hidden');
-			
+
 			// Show Review Button
 			elements.openDashboard.style.display = 'block';
 			elements.openDashboard.classList.add('btn-success');
@@ -245,7 +245,7 @@ function render() {
 
 		case STATES.SCANNING:
 			elements.onGooglePhotos.classList.remove('hidden');
-			
+
 			// Scan Button becomes Stop Button
 			elements.startScan.classList.remove('hidden');
 			elements.startScan.textContent = '⏹ Stop Scanning';
@@ -254,7 +254,7 @@ function render() {
 			// Hide other controls during scan
 			elements.clearData.classList.add('hidden');
 			elements.openDashboard.style.display = 'none';
-			
+
 			// Show warning message persistently (duration = 0)
 			showMessage('⚠️ Keep this window open while scanning!', 'info', 0);
 			break;
@@ -263,8 +263,8 @@ function render() {
 
 function resetButtonStyles() {
 	const btns = [elements.startScan, elements.openDashboard];
-	btns.forEach(btn => {
-		if(btn) {
+	btns.forEach((btn) => {
+		if (btn) {
 			btn.className = 'btn'; // Reset to base class
 			// We will add specific classes in render switch
 		}
@@ -329,7 +329,6 @@ async function handleStartScan() {
 		appState.current = STATES.SCANNING;
 		trackEvent('Start Scan', { tabId: appState.currentTab.id });
 		render();
-
 	} catch (error) {
 		console.error('Start scan failed:', error);
 		showMessage('Failed to start scan.', 'error');
@@ -368,7 +367,7 @@ async function handleClearData() {
 			const userTyped = prompt(
 				'⚠️ WARNING: You have AI suggestions (Paid Feature) that will be lost!\n\nType "I understand" to confirm clearing all data:'
 			);
-			
+
 			if (userTyped && userTyped.toLowerCase() === 'i understand') {
 				// Retry with force
 				response = await chrome.runtime.sendMessage({ action: 'clearAllData', force: true });
@@ -382,7 +381,7 @@ async function handleClearData() {
 			// Clean local state
 			appState.stats.totalPhotos = 0;
 			appState.stats.totalGroups = 0;
-			
+
 			// Force refresh
 			await refreshState();
 			showMessage('Data cleared!', 'success');
@@ -409,7 +408,7 @@ async function ensureContentScriptLoaded(tabId) {
 				target: { tabId: tabId },
 				files: ['content-scraper.js']
 			});
-			await new Promise(r => setTimeout(r, 500)); // Wait for init
+			await new Promise((r) => setTimeout(r, 500)); // Wait for init
 			return true;
 		} catch (e) {
 			console.error('Script injection failed:', e);
@@ -426,7 +425,7 @@ async function ensureContentScriptLoaded(tabId) {
  */
 function showMessage(text, type = 'info', duration = 3000) {
 	const msg = elements.message;
-	
+
 	// Clear any existing timeout to prevent race conditions
 	if (messageTimeout) {
 		clearTimeout(messageTimeout);

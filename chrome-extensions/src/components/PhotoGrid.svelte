@@ -59,9 +59,11 @@
 		try {
 			const batch = await db.getPhotosBatch(loadedCount, count);
 			displayPhotos = [...displayPhotos, ...batch];
+			// eslint-disable-next-line svelte/infinite-reactive-loop -- Guard at function start prevents infinite loop
 			loadedCount += batch.length;
 			await loadSelectionStates();
 		} finally {
+			// eslint-disable-next-line svelte/infinite-reactive-loop -- Guard at function start prevents infinite loop
 			isLoading = false;
 		}
 	}
@@ -144,11 +146,17 @@
 	}
 
 	// Set up Intersection Observer when sentinel element is available
-	$: if (enablePagination && sentinelElement && typeof IntersectionObserver !== 'undefined' && !intersectionObserver) {
+	$: if (
+		enablePagination &&
+		sentinelElement &&
+		typeof IntersectionObserver !== 'undefined' &&
+		!intersectionObserver
+	) {
 		intersectionObserver = new IntersectionObserver(
 			(entries) => {
 				entries.forEach((entry) => {
 					if (entry.isIntersecting && !isLoading && loadedCount < (totalPhotos || 0)) {
+						// eslint-disable-next-line svelte/infinite-reactive-loop -- Guarded by isLoading and loadedCount check
 						loadMore(BATCH_SIZE);
 					}
 				});
