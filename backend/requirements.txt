@@ -5,6 +5,7 @@ python-multipart==0.0.20
 aiosqlite==0.21.0
 python-dotenv==1.2.1
 polar-sdk==0.28.0
+markdown2==2.5.4
 
 # Development tools
 black==25.11.0

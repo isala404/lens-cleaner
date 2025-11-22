@@ -13,10 +13,11 @@ from pathlib import Path
 from typing import Optional
 
 import aiosqlite
+import markdown2
 from dotenv import load_dotenv
 from fastapi import Body, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from polar_sdk import Polar
 from polar_sdk._webhooks import WebhookVerificationError, validate_event
 from pydantic import BaseModel
@@ -37,6 +38,7 @@ logger = logging.getLogger(__name__)
 # Configuration
 DATABASE_PATH = "top_pics.db"
 UPLOAD_DIR = Path("uploads")
+DOCS_DIR = Path("docs")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 PRICING_PER_PHOTO = 0.01  # $0.01 per photo
 PRICING_PER_UNIT = 1.00  # $1.00 per 100 photos
@@ -169,8 +171,8 @@ async def startup_event():
     await init_db()
 
 
-@app.get("/")
-async def root():
+@app.get("/health")
+async def health_check():
     """Health check endpoint"""
     return {"status": "ok", "service": "TopPics API", "version": "1.0.0"}
 
@@ -1045,6 +1047,91 @@ async def refund_job(job_id: str):
     except Exception as e:
         logger.error(f"Error processing refund for job_id={job_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to process refund: {str(e)}") from e
+
+
+def serve_markdown(filename: str, title: str) -> HTMLResponse:
+    """Read markdown file and serve as HTML"""
+    try:
+        file_path = DOCS_DIR / filename
+        if not file_path.exists():
+            raise HTTPException(status_code=404, detail=f"Document {filename} not found")
+
+        with open(file_path, "r") as f:
+            content = f.read()
+
+        # Add cuddled-lists extra to handle lists without preceding newlines if needed,
+        # but we also fixed the markdown files themselves.
+        html_content = markdown2.markdown(content, extras=["fenced-code-blocks", "tables", "cuddled-lists"])
+
+        template = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>{title} - TopPics</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <meta name="description" content="TopPics helps you organize your Google Photos library by finding duplicates and best shots using local AI. Privacy-first and secure.">
+            <style>
+                body {{
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                    line-height: 1.6;
+                    color: #333;
+                    max-width: 800px;
+                    margin: 0 auto;
+                    padding: 40px 20px;
+                    background-color: #fff;
+                }}
+                h1, h2, h3 {{ color: #1a202c; margin-top: 1.5em; margin-bottom: 0.5em; }}
+                h1 {{ border-bottom: 2px solid #edf2f7; padding-bottom: 15px; font-size: 2.25rem; font-weight: 800; }}
+                h2 {{ font-size: 1.5rem; font-weight: 700; padding-bottom: 10px; border-bottom: 1px solid #f7fafc; }}
+                p {{ margin-bottom: 1.2em; }}
+                a {{ color: #3182ce; text-decoration: none; font-weight: 500; }}
+                a:hover {{ text-decoration: underline; color: #2c5282; }}
+                code {{ background: #edf2f7; padding: 2px 6px; border-radius: 4px; font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace; font-size: 0.9em; }}
+                pre {{ background: #edf2f7; padding: 20px; overflow-x: auto; border-radius: 8px; }}
+                ul, ol {{ padding-left: 25px; margin-bottom: 1.5em; }}
+                li {{ margin-bottom: 8px; position: relative; }}
+                hr {{ border: 0; border-top: 1px solid #e2e8f0; margin: 40px 0; }}
+                .footer {{
+                    margin-top: 60px;
+                    font-size: 0.9em;
+                    color: #718096;
+                    border-top: 1px solid #e2e8f0;
+                    padding-top: 30px;
+                    text-align: center;
+                }}
+                strong {{ color: #2d3748; font-weight: 600; }}
+            </style>
+        </head>
+        <body>
+            {html_content}
+            <div class="footer">
+                &copy; {datetime.now().year} Tallisa. All rights reserved.  |  TopPics is not affiliated with Google.
+            </div>
+        </body>
+        </html>
+        """
+        return HTMLResponse(content=template, status_code=200)
+    except Exception as e:
+        logger.error(f"Error serving markdown {filename}: {e}")
+        raise HTTPException(status_code=500, detail="Error serving document")
+
+
+@app.get("/terms", response_class=HTMLResponse)
+async def terms_page():
+    """Serve Terms and Conditions page"""
+    return serve_markdown("TERMS.md", "Terms and Conditions")
+
+
+@app.get("/privacy", response_class=HTMLResponse)
+async def privacy_page():
+    """Serve Privacy Policy page"""
+    return serve_markdown("PRIVACY.md", "Privacy Policy")
+
+
+@app.get("/", response_class=HTMLResponse)
+async def about_page():
+    """Serve About page as the root landing page"""
+    return serve_markdown("ABOUT.md", "TopPics - Organize Google Photos with Local AI")
 
 
 if __name__ == "__main__":
