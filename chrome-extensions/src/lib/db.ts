@@ -1239,6 +1239,38 @@ class TopPicsDB {
 		}
 	}
 
+	/**
+	 * Check if there are any AI suggestions
+	 */
+	async hasAISuggestions(): Promise<boolean> {
+		if (!this.db) throw new Error('Database not initialized');
+
+		const transaction = this.db.transaction(['photos'], 'readonly');
+		const store = transaction.objectStore('photos');
+
+		return new Promise((resolve, reject) => {
+			const request = store.openCursor();
+
+			request.onsuccess = (event) => {
+				const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
+				if (cursor) {
+					if (
+						cursor.value.aiSuggestionReason !== undefined ||
+						cursor.value.aiSuggestionConfidence !== undefined
+					) {
+						resolve(true);
+						return;
+					}
+					cursor.continue();
+				} else {
+					resolve(false);
+				}
+			};
+
+			request.onerror = () => reject(request.error);
+		});
+	}
+
 	// ===== SELECTION MANAGEMENT =====
 	// Methods for managing photo selection state in IndexedDB
 	// This allows scalable selection of millions of photos without memory constraints

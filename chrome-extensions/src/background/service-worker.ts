@@ -91,8 +91,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 			return true;
 
 		case 'clearAllData':
-			handleClearAllData()
-				.then(() => sendResponse({ success: true }))
+			handleClearAllData(message.force)
+				.then((result) => sendResponse({ success: true, ...result }))
 				.catch((error) => sendResponse({ success: false, error: error.message }));
 			return true;
 
@@ -355,7 +355,14 @@ async function handleGetStats() {
 /**
  * Clear all data
  */
-async function handleClearAllData() {
+async function handleClearAllData(force: boolean = false) {
+	if (!force) {
+		const hasAI = await db.hasAISuggestions();
+		if (hasAI) {
+			return { requiresConfirmation: true };
+		}
+	}
+
 	console.log('Clearing all data...');
 	await db.clearAll();
 	processingProgress = {
@@ -364,6 +371,7 @@ async function handleClearAllData() {
 		status: 'idle'
 	};
 	console.log('All data cleared');
+	return { requiresConfirmation: false };
 }
 
 /**

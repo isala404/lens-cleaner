@@ -345,15 +345,35 @@ async function handleClearData() {
 	if (!confirm('Are you sure you want to clear all data and start fresh?')) return;
 
 	try {
-		await chrome.runtime.sendMessage({ action: 'clearAllData' });
-		
-		// Clean local state
-		appState.stats.totalPhotos = 0;
-		appState.stats.totalGroups = 0;
-		
-		// Force refresh
-		await refreshState();
-		showMessage('Data cleared!', 'success');
+		// First attempt without force to check for paid features/AI suggestions
+		let response = await chrome.runtime.sendMessage({ action: 'clearAllData', force: false });
+
+		// If server says we need confirmation (due to paid features being present)
+		if (response && response.requiresConfirmation) {
+			const userTyped = prompt(
+				'⚠️ WARNING: You have AI suggestions (Paid Feature) that will be lost!\n\nType "I understand" to confirm clearing all data:'
+			);
+			
+			if (userTyped && userTyped.toLowerCase() === 'i understand') {
+				// Retry with force
+				response = await chrome.runtime.sendMessage({ action: 'clearAllData', force: true });
+			} else {
+				showMessage('Clear cancelled.', 'info');
+				return;
+			}
+		}
+
+		if (response && response.success) {
+			// Clean local state
+			appState.stats.totalPhotos = 0;
+			appState.stats.totalGroups = 0;
+			
+			// Force refresh
+			await refreshState();
+			showMessage('Data cleared!', 'success');
+		} else {
+			throw new Error(response?.error || 'Unknown error');
+		}
 	} catch (error) {
 		console.error('Clear data failed:', error);
 		showMessage('Failed to clear data.', 'error');
