@@ -5,7 +5,12 @@
 	export let show: boolean;
 	export let photoCount: number;
 	export let onClose: () => void;
-	export let onCheckoutCreated: (checkoutUrl: string, checkoutId: string, jobId: string) => void;
+	export let onCheckoutCreated: (
+		checkoutUrl: string,
+		checkoutId: string,
+		jobId: string,
+		amount: number
+	) => void;
 
 	let isSubmitting = false;
 	let isLoadingPricing = false;
@@ -77,7 +82,7 @@
 			const response = await createCheckout(photoCount);
 
 			// Save checkout info before navigating
-			onCheckoutCreated(response.checkout_url, response.checkout_id, response.job_id);
+			onCheckoutCreated(response.checkout_url, response.checkout_id, response.job_id, totalCost);
 
 			// Navigate to Polar checkout page
 			window.location.href = response.checkout_url;

@@ -33,6 +33,7 @@ export interface PaymentVerificationResponse {
 	charged_photo_count: number;
 	support_email: string;
 	status?: string;
+	amount?: number;
 }
 
 export interface JobStatusResponse {

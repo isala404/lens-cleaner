@@ -26,6 +26,7 @@
 		retryJobStatus,
 		applyAISuggestions
 	} from './lib/autoSelect';
+	import { trackEvent, trackScreen, trackRevenue } from './lib/analytics';
 
 	// Components
 	import Header from './components/Header.svelte';
@@ -41,6 +42,8 @@
 
 	let currentStep: 'welcome' | 'preview' | 'indexing' | 'indexed' | 'grouping' | 'reviewing' =
 		'welcome';
+
+	$: trackScreen(currentStep);
 
 	let autoProcessing = false;
 	let showSettings = false;
@@ -228,6 +231,12 @@
 				if (verificationResponse.payment_verified) {
 					// Save job ID from verification response
 					const jobId = verificationResponse.job_id;
+					
+					// Track revenue with verified amount from backend
+					// Divide by 100 because Polar uses cents, but Umami/Analytics usually expect dollars/units
+					const amount = (verificationResponse.amount || 0) / 100;
+					trackRevenue(amount, 'USD', { jobId, checkoutId });
+					
 					autoSelectJobId = jobId;
 					localStorage.setItem('autoSelectJobId', jobId);
 					await db.saveAutoSelectJob({
@@ -247,6 +256,7 @@
 				} else {
 					// Payment not verified yet
 					console.error('Payment not verified:', verificationResponse);
+					trackEvent('Payment Verification Pending', { checkoutId });
 					autoSelectError = 'Payment verification pending. Please try again in a moment.';
 					autoSelectStatus = 'failed';
 					canRetryAutoSelect = true;
@@ -257,6 +267,7 @@
 				}
 			} catch (error) {
 				console.error('Error verifying payment:', error);
+				trackEvent('Payment Verification Error', { error: error instanceof Error ? error.message : String(error) });
 				autoSelectError = error instanceof Error ? error.message : 'Failed to verify payment';
 				autoSelectStatus = 'failed';
 				canRetryAutoSelect = true;
@@ -309,6 +320,7 @@
 
 	async function handleStartIndexing() {
 		if (autoProcessing) return;
+		trackEvent('Start Indexing', { photos: $appStore.stats.totalPhotos });
 		autoProcessing = true;
 		processingStartTime = Date.now();
 		processingStartProgress = 0; // Start from 0 for new indexing
@@ -328,6 +340,7 @@
 	}
 
 	async function handleStartGrouping() {
+		trackEvent('Start Grouping', { photos: $appStore.stats.photosWithEmbeddings });
 		if (!autoProcessing) {
 			autoProcessing = true;
 			processingStartTime = Date.now();
@@ -360,6 +373,7 @@
 
 	async function handleClearConfirmed() {
 		showClearWarning = false;
+		trackEvent('Clear Selection');
 
 		// Clear AI suggestions and auto-select state
 		await db.clearAISuggestions();
@@ -391,6 +405,7 @@
 			)
 		) {
 			try {
+				trackEvent('Delete From Google Photos', { count: $appStore.selectedPhotosCount });
 				await deleteFromGooglePhotos();
 			} catch (error) {
 				alert('Error initiating Google Photos deletion: ' + error);
@@ -405,6 +420,7 @@
 			)
 		) {
 			try {
+				trackEvent('Reindex');
 				// Clear groups and embeddings, keep photos
 				await db.clearGroups();
 				await db.clearEmbeddings();
@@ -423,9 +439,15 @@
 		// Just open modal, handled in ReviewScreen
 	}
 
-	async function handleCheckoutCreated(checkoutUrl: string, checkoutId: string, jobId: string) {
+	async function handleCheckoutCreated(
+		checkoutUrl: string,
+		checkoutId: string,
+		jobId: string,
+		amount: number
+	) {
 		// Store job ID for when payment completes
 		// Note: PaymentModal will handle navigation to Polar checkout page
+		trackEvent('Checkout Created', { checkoutId, jobId, amount });
 		autoSelectJobId = jobId;
 		localStorage.setItem('autoSelectJobId', jobId);
 		localStorage.setItem('autoSelectCheckoutId', checkoutId);
@@ -433,6 +455,7 @@
 
 	async function handleAutoSelectUpload() {
 		try {
+			trackEvent('Start Auto Select Upload', { jobId: autoSelectJobId });
 			autoSelectStatus = 'uploading';
 			autoSelectProgress = 0;
 			saveAutoSelectState();
@@ -533,6 +556,8 @@
 						const selectedCount = await db.getSelectedPhotosCount();
 						appStore.update((state) => ({ ...state, selectedPhotosCount: selectedCount }));
 
+						trackEvent('Job Completed', { jobId, deletedCount: results.deletions.length });
+
 						autoSelectStatus = 'completed';
 						clearAutoSelectState();
 						await refreshData();
@@ -566,6 +591,11 @@
 				// Full page restart after successful AI auto selection
 				location.reload();
 			} else if (response.status === 'tampered') {
+				const errorDetails = {
+					expected: response.expected_amount,
+					actual: response.actual_amount
+				};
+				trackEvent('Payment Tampered', errorDetails);
 				autoSelectStatus = 'failed';
 				autoSelectError = `Payment amount was modified during checkout. Please contact support@tallisa.dev for assistance. Expected: $${(response.expected_amount || 0) / 100}, Actual: $${(response.actual_amount || 0) / 100}`;
 				canRetryAutoSelect = false;
@@ -647,10 +677,12 @@
 		if (!autoSelectJobId) return;
 
 		try {
+			trackEvent('Refund Initiated', { jobId: autoSelectJobId });
 			refundLoading = true;
 			const refundResponse = await refundJob(autoSelectJobId);
 
 			if (refundResponse.success) {
+				trackEvent('Refund Success', { jobId: autoSelectJobId });
 				autoSelectStatus = 'idle';
 				autoSelectError = '';
 				canRetryAutoSelect = false;
@@ -659,10 +691,12 @@
 				autoSelectJobId = null;
 				alert(`Refund processed successfully! ${refundResponse.message}`);
 			} else {
+				trackEvent('Refund Failed', { error: refundResponse.message, jobId: autoSelectJobId });
 				autoSelectError = refundResponse.message;
 				saveAutoSelectState();
 			}
 		} catch (error) {
+			trackEvent('Refund Error', { error: error instanceof Error ? error.message : String(error) });
 			autoSelectError = error instanceof Error ? error.message : 'Refund failed';
 			saveAutoSelectState();
 		} finally {
@@ -715,6 +749,7 @@
 
 	async function handleRegroupConfirmed() {
 		showRegroupWarning = false;
+		trackEvent('Regroup');
 		await performRegroup();
 	}
 
@@ -725,6 +760,7 @@
 			)
 		) {
 			try {
+				trackEvent('Rescan');
 				await clearAllData();
 				groupPhotosCache.clear();
 				ungroupedPhotos = [];
@@ -737,6 +773,7 @@
 	}
 
 	async function handleSaveSettings() {
+		trackEvent('Save Settings', editingSettings);
 		await updateSettings({
 			similarityThreshold: editingSettings.similarityThreshold,
 			timeWindowMinutes: editingSettings.timeWindowMinutes,

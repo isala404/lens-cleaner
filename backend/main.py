@@ -344,7 +344,7 @@ async def create_checkout(request: CheckoutRequest):
             "amount": expected_amount,
             "success_url": success_url,
             "metadata": metadata,
-            "allow_discount_codes": False,
+            "allow_discount_codes": True,
         }
 
         if expected_amount < 50:
@@ -494,6 +494,7 @@ async def verify_payment(checkout_id: str):
                 "photo_count": photo_count,
                 "charged_photo_count": charged_photo_count,
                 "support_email": SUPPORT_EMAIL,
+                "amount": actual_amount,
             }
         else:
             logger.warning(
@@ -1061,7 +1062,9 @@ def serve_markdown(filename: str, title: str) -> HTMLResponse:
 
         # Add cuddled-lists extra to handle lists without preceding newlines if needed,
         # but we also fixed the markdown files themselves.
-        html_content = markdown2.markdown(content, extras=["fenced-code-blocks", "tables", "cuddled-lists"])
+        html_content = markdown2.markdown(
+            content, extras=["fenced-code-blocks", "tables", "cuddled-lists"]
+        )
 
         template = f"""
         <!DOCTYPE html>
@@ -1113,7 +1116,7 @@ def serve_markdown(filename: str, title: str) -> HTMLResponse:
         return HTMLResponse(content=template, status_code=200)
     except Exception as e:
         logger.error(f"Error serving markdown {filename}: {e}")
-        raise HTTPException(status_code=500, detail="Error serving document")
+        raise HTTPException(status_code=500, detail="Error serving document") from None
 
 
 @app.get("/terms", response_class=HTMLResponse)

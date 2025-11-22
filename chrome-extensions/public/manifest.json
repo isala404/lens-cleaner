@@ -47,6 +47,6 @@
 		}
 	],
 	"content_security_policy": {
-		"extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"
+		"extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' https://umami.tallisa.dev https://toppics.tallisa.dev data:; img-src 'self' data: blob:;"
 	}
 }

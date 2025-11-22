@@ -30,9 +30,20 @@ const elements = {};
 let messageTimeout = null;
 
 /**
+ * Track event with Umami
+ */
+function trackEvent(eventName, data = {}) {
+	if (window.umami) {
+		window.umami.track(eventName, data);
+	}
+}
+
+/**
  * Initialize on load
  */
 document.addEventListener('DOMContentLoaded', async () => {
+	trackEvent('Popup Opened');
+
 	// Cache DOM elements
 	cacheElements();
 
@@ -266,6 +277,7 @@ function resetButtonStyles() {
 function setupEventListeners() {
 	// Open Google Photos
 	elements.openGooglePhotos.addEventListener('click', () => {
+		trackEvent('Open Google Photos');
 		chrome.tabs.create({ url: 'https://photos.google.com', active: true });
 	});
 
@@ -280,6 +292,7 @@ function setupEventListeners() {
 
 	// Open Dashboard
 	elements.openDashboard.addEventListener('click', () => {
+		trackEvent('Open Dashboard');
 		chrome.tabs.create({ url: chrome.runtime.getURL('dashboard.html') });
 	});
 
@@ -314,6 +327,7 @@ async function handleStartScan() {
 
 		// Optimistic Update
 		appState.current = STATES.SCANNING;
+		trackEvent('Start Scan', { tabId: appState.currentTab.id });
 		render();
 
 	} catch (error) {
@@ -332,6 +346,7 @@ async function handleStopScan() {
 		await chrome.tabs.sendMessage(appState.currentTab.id, { action: 'stopScraping' });
 		// State will update on next poll/refresh
 		showMessage('Stopping scan...', 'info');
+		trackEvent('Stop Scan');
 		setTimeout(refreshState, 500);
 	} catch (error) {
 		console.error('Stop scan failed:', error);
@@ -371,6 +386,7 @@ async function handleClearData() {
 			// Force refresh
 			await refreshState();
 			showMessage('Data cleared!', 'success');
+			trackEvent('Clear Data');
 		} else {
 			throw new Error(response?.error || 'Unknown error');
 		}
