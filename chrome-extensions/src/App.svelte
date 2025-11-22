@@ -20,7 +20,7 @@
 	} from './stores/appStore';
 
 	import db, { type Group, type Photo } from './lib/db';
-	import { uploadPhotos, startProcessing, getJobStatus, refundJob, verifyPayment } from './lib/api';
+	import { uploadPhotos, startProcessing, getJobStatus, verifyPayment } from './lib/api';
 	import {
 		preparePhotosForAutoSelect,
 		pollJobStatus,
@@ -704,32 +704,13 @@
 	async function handleRefundAutoSelect() {
 		if (!autoSelectJobId) return;
 
-		try {
-			trackEvent('Refund Initiated', { jobId: autoSelectJobId });
-			refundLoading = true;
-			const refundResponse = await refundJob(autoSelectJobId);
+		trackEvent('Refund Clicked', { jobId: autoSelectJobId });
 
-			if (refundResponse.success) {
-				trackEvent('Refund Success', { jobId: autoSelectJobId });
-				autoSelectStatus = 'idle';
-				autoSelectError = '';
-				canRetryAutoSelect = false;
-				canRefundAutoSelect = false;
-				clearAutoSelectState();
-				autoSelectJobId = null;
-				alert(`Refund processed successfully! ${refundResponse.message}`);
-			} else {
-				trackEvent('Refund Failed', { error: refundResponse.message, jobId: autoSelectJobId });
-				autoSelectError = refundResponse.message;
-				saveAutoSelectState();
-			}
-		} catch (error) {
-			trackEvent('Refund Error', { error: error instanceof Error ? error.message : String(error) });
-			autoSelectError = error instanceof Error ? error.message : 'Refund failed';
-			saveAutoSelectState();
-		} finally {
-			refundLoading = false;
-		}
+		const subject = encodeURIComponent(`Refund Request for Job ${autoSelectJobId}`);
+		const body = encodeURIComponent(
+			`Hello,\n\nI would like to request a refund for job ${autoSelectJobId}.\n\nReason:\n`
+		);
+		window.open(`mailto:support@tallisa.dev?subject=${subject}&body=${body}`, '_blank');
 	}
 
 	async function handleRegroup() {
@@ -1002,6 +983,7 @@
 				onRetryAutoSelect={handleRetryAutoSelect}
 				onRefundAutoSelect={handleRefundAutoSelect}
 				{refundLoading}
+				jobId={autoSelectJobId}
 				enableGroupPagination={true}
 				totalGroupsCount={$appStore.stats.totalGroups}
 			/>

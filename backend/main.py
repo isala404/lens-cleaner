@@ -36,7 +36,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Configuration
-DATABASE_PATH = "top_pics.db"
+DATABASE_PATH = "uploads/top_pics.db"
 UPLOAD_DIR = Path("uploads")
 DOCS_DIR = Path("docs")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")

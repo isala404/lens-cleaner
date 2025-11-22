@@ -7,6 +7,32 @@
 	export let canRefund: boolean = false;
 	export let onRefund: () => void = () => {};
 	export let refundLoading: boolean = false;
+	export let jobId: string | null = null;
+
+	const supportEmail = 'support@tallisa.dev';
+
+	// Tampered state email
+	$: tamperedSubject = jobId ? `Payment Issue Job ${jobId}` : 'Payment Amount Modified';
+	$: tamperedBody = jobId
+		? `Hello,\n\nI am contacting support regarding a payment amount modification for job ${jobId}.\n\nDetails:\n`
+		: 'Hello,\n\nI am contacting support regarding a payment amount modification.\n\nDetails:\n';
+	$: tamperedHref = `mailto:${supportEmail}?subject=${encodeURIComponent(tamperedSubject)}&body=${encodeURIComponent(tamperedBody)}`;
+
+	// Failed state email
+	$: failedSubject = jobId ? `Help Needed for Job ${jobId}` : 'Processing Failed Help';
+	$: failedBody = jobId
+		? `Hello,\n\nI need help with job ${jobId} which failed to process.\n\nDetails:\n`
+		: 'Hello,\n\nI need help with a failed processing job.\n\nDetails:\n';
+	$: failedHref = `mailto:${supportEmail}?subject=${encodeURIComponent(failedSubject)}&body=${encodeURIComponent(failedBody)}`;
+
+	// General/Processing state email
+	$: processingSubject = jobId
+		? `Question about Job ${jobId}`
+		: 'Question about TopPics Processing';
+	$: processingBody = jobId
+		? `Hello,\n\nI have a question about my processing job ${jobId}.\n\nQuestion:\n`
+		: 'Hello,\n\nI have a question about TopPics processing.\n\nQuestion:\n';
+	$: processingHref = `mailto:${supportEmail}?subject=${encodeURIComponent(processingSubject)}&body=${encodeURIComponent(processingBody)}`;
 </script>
 
 <div class="shadow-brutalist-lg mb-6 overflow-hidden rounded-2xl border-4 border-black">
@@ -49,7 +75,9 @@
 
 			<p class="mt-2 text-center text-xs text-gray-500">
 				Need help? Contact <a
-					href="mailto:support@tallisa.dev"
+					href={processingHref}
+					target="_blank"
+					rel="noopener noreferrer"
 					class="font-semibold text-purple-600 hover:underline">support@tallisa.dev</a
 				>
 			</p>
@@ -85,7 +113,9 @@
 
 			<div class="mt-4">
 				<a
-					href="mailto:support@tallisa.dev"
+					href={tamperedHref}
+					target="_blank"
+					rel="noopener noreferrer"
 					class="block w-full rounded-xl border-2 border-black bg-yellow-500 px-4 py-3 text-center font-bold text-white transition-colors hover:bg-yellow-600"
 				>
 					📧 Contact Support
@@ -94,7 +124,9 @@
 
 			<p class="mt-3 text-center text-xs text-gray-500">
 				Email <a
-					href="mailto:support@tallisa.dev"
+					href={tamperedHref}
+					target="_blank"
+					rel="noopener noreferrer"
 					class="font-semibold text-yellow-600 hover:underline">support@tallisa.dev</a
 				> to resolve this issue
 			</p>
@@ -116,36 +148,38 @@
 			{#if canRetry}
 				<div class="mt-4 flex gap-3">
 					<button
-						on:click={onRetry}
+						onclick={onRetry}
 						class="flex-1 rounded-xl border-2 border-black bg-blue-500 px-4 py-3 font-bold text-white transition-colors hover:bg-blue-600"
 					>
 						🔄 Retry Processing
 					</button>
 					{#if canRefund}
 						<button
-							on:click={onRefund}
+							onclick={onRefund}
 							disabled={refundLoading}
 							class="flex-1 rounded-xl border-2 border-black bg-orange-500 px-4 py-3 font-bold text-white transition-colors hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
 						>
-							{refundLoading ? '⏳ Processing...' : '💰 Get Refund'}
+							{refundLoading ? '⏳ Processing...' : '💰 Request Refund'}
 						</button>
 					{/if}
 				</div>
 			{:else if canRefund}
 				<div class="mt-4">
 					<button
-						on:click={onRefund}
+						onclick={onRefund}
 						disabled={refundLoading}
 						class="w-full rounded-xl border-2 border-black bg-orange-500 px-4 py-3 font-bold text-white transition-colors hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
 					>
-						{refundLoading ? '⏳ Processing Refund...' : '💰 Get Refund'}
+						{refundLoading ? '⏳ Processing Refund...' : '💰 Request Refund'}
 					</button>
 				</div>
 			{/if}
 
 			<p class="mt-3 text-center text-xs text-gray-500">
 				Contact <a
-					href="mailto:support@tallisa.dev"
+					href={failedHref}
+					target="_blank"
+					rel="noopener noreferrer"
 					class="font-semibold text-red-600 hover:underline">support@tallisa.dev</a
 				> for assistance
 			</p>

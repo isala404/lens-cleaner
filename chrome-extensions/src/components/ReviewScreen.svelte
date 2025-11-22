@@ -58,6 +58,7 @@
 	export let onRetryAutoSelect: () => void = () => {};
 	export let onRefundAutoSelect: () => void = () => {};
 	export let refundLoading: boolean = false;
+	export let jobId: string | null = null;
 
 	let showPaymentModal = false;
 
@@ -233,7 +234,12 @@
 		{:else if autoSelectStatus === 'completed'}
 			<AutoSelectProcessingBanner status="completed" uploadProgress={100} message="" />
 		{:else if autoSelectStatus === 'tampered'}
-			<AutoSelectProcessingBanner status="tampered" uploadProgress={0} message={autoSelectError} />
+			<AutoSelectProcessingBanner
+				status="tampered"
+				uploadProgress={0}
+				message={autoSelectError}
+				{jobId}
+			/>
 		{:else if autoSelectStatus === 'failed'}
 			<AutoSelectProcessingBanner
 				status="failed"
@@ -244,6 +250,7 @@
 				canRefund={canRefundAutoSelect}
 				onRefund={onRefundAutoSelect}
 				{refundLoading}
+				{jobId}
 			/>
 		{/if}
 
