@@ -1,5 +1,5 @@
 /**
- * API Client for Lens Cleaner Backend
+ * API Client for PhotoSweep Backend
  * Handles communication with the Python FastAPI backend
  */
 

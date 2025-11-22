@@ -1,36 +1,36 @@
 @import 'tailwindcss';
 
-/* Soft Brutalism Design System - Watercolor Pastels & Cozy Productivity */
+/* PhotoSweep Design System - Modern, Clean & Premium Aesthetics */
 
 @theme {
-	/* Pastel Pink Palette - Watercolor Washes */
-	--color-pastel-pink-50: #fff5f7;
-	--color-pastel-pink-100: #ffe5ec;
-	--color-pastel-pink-200: #ffd6e0;
-	--color-pastel-pink-300: #ffc4d0;
-	--color-pastel-pink-400: #ffb3c1;
+	/* PhotoSweep Pink Palette - Vibrant & Modern */
+	--color-pastel-pink-50: #faf5f8;
+	--color-pastel-pink-100: #f5e8ef;
+	--color-pastel-pink-200: #edcfe0;
+	--color-pastel-pink-300: #e8b8cc;
+	--color-pastel-pink-400: #e29bb8;
 
-	/* Pastel Purple Palette - Dreamy Atmosphere */
-	--color-pastel-purple-50: #f5f3ff;
-	--color-pastel-purple-100: #e5deff;
-	--color-pastel-purple-200: #d4c5f9;
-	--color-pastel-purple-300: #c3b1e1;
-	--color-pastel-purple-400: #b8a7d9;
+	/* PhotoSweep Purple Palette - Premium & Sophisticated */
+	--color-pastel-purple-50: #faf8ff;
+	--color-pastel-purple-100: #f0ebff;
+	--color-pastel-purple-200: #e0d5ff;
+	--color-pastel-purple-300: #c9b0f0;
+	--color-pastel-purple-400: #a878db;
 
-	/* Pastel Blue Palette - Ethereal Tones */
-	--color-pastel-blue-50: #f0f9ff;
-	--color-pastel-blue-100: #e0f2fe;
-	--color-pastel-blue-200: #bae6fd;
-	--color-pastel-blue-300: #7dd3fc;
-	--color-pastel-blue-400: #5ec4f7;
+	/* PhotoSweep Blue Palette - Clean & Professional */
+	--color-pastel-blue-50: #f0f7ff;
+	--color-pastel-blue-100: #deeeff;
+	--color-pastel-blue-200: #bce1ff;
+	--color-pastel-blue-300: #7fcbff;
+	--color-pastel-blue-400: #4badff;
 
-	/* Brutalism Accents */
-	--color-brutalist-black: #000000;
-	--color-brutalist-gray: #404040;
+	/* Modern Accents */
+	--color-brutalist-black: #1a1a1a;
+	--color-brutalist-gray: #4a4a4a;
 
-	/* Soft Warm Accents */
-	--color-warm-peach: #ffe4d6;
-	--color-warm-cream: #fff8f0;
+	/* Warm Accents */
+	--color-warm-peach: #ffe0cc;
+	--color-warm-cream: #fffaf5;
 }
 
 /* Global Styles */

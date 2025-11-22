@@ -1,9 +1,9 @@
 /**
- * IndexedDB wrapper for Lens Cleaner
+ * IndexedDB wrapper for PhotoSweep
  * Stores photos, embeddings, and groups
  */
 
-const DB_NAME = 'LensCleanerDB';
+const DB_NAME = 'PhotoSweepDB';
 const DB_VERSION = 1;
 
 export interface Photo {

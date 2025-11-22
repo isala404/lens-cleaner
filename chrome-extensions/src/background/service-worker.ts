@@ -1,5 +1,5 @@
 /**
- * Background Service Worker for Lens Cleaner
+ * Background Service Worker for PhotoSweep
  * Handles photo storage, embedding calculations, and grouping
  */
 
@@ -26,7 +26,7 @@ let processingProgress = {
  * Initialize the service worker
  */
 async function initialize() {
-	console.log('Lens Cleaner service worker starting...');
+	console.log('PhotoSweep service worker starting...');
 
 	try {
 		// Initialize database

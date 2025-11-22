@@ -1,8 +1,8 @@
 {
 	"manifest_version": 3,
-	"name": "Lens Cleaner",
+	"name": "PhotoSweep: Duplicates Cleaner for Google Photos",
 	"version": "1.0.0",
-	"description": "AI-powered duplicate photo detector for Google Photos",
+	"description": "Smartly identify and sweep away duplicate photos, free up cloud storage",
 	"permissions": ["storage", "activeTab", "tabs", "scripting"],
 	"host_permissions": [
 		"https://photos.google.com/*",
@@ -22,7 +22,7 @@
 	],
 	"action": {
 		"default_popup": "popup.html",
-		"default_title": "Lens Cleaner"
+		"default_title": "PhotoSweep"
 	},
 	"icons": {
 		"16": "favicon.png",

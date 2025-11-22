@@ -4,7 +4,7 @@
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 		<link rel="icon" href="favicon.png" />
-		<title>Lens Cleaner</title>
+		<title>PhotoSweep - Duplicates Cleaner</title>
 		<style>
 			/* Soft Brutalism Popup Design - Watercolor Pastels & Cozy Productivity */
 			* {
@@ -303,9 +303,9 @@
 	</head>
 	<body>
 		<div class="header">
-			<div class="logo">📸</div>
-			<h1>Lens Cleaner</h1>
-			<div class="tagline">Find & delete duplicate photos</div>
+			<div class="logo">🧹</div>
+			<h1>PhotoSweep</h1>
+			<div class="tagline">Smartly identify and sweep away duplicates</div>
 		</div>
 
 		<div class="stats">
@@ -322,6 +322,11 @@
 		<div class="divider" style="margin-bottom: 20px"></div>
 
 		<div id="message" class="message hidden"></div>
+
+		<div id="loadingView" class="hidden" style="text-align: center; padding: 20px;">
+			<div style="font-size: 24px; margin-bottom: 10px;">⏳</div>
+			<div>Loading...</div>
+		</div>
 
 		<div id="notOnGooglePhotos" class="hidden">
 			<div class="simple-message">To find duplicates, first open your Google Photos library</div>
@@ -343,7 +348,7 @@
 			</div>
 		</div>
 
-		<div class="footer">Lens Cleaner v1.0 • AI-powered</div>
+		<div class="footer">PhotoSweep v1.0 • Smart Duplicate Detection</div>
 		<script src="popup.js"></script>
 	</body>
 </html>

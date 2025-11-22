@@ -1,22 +1,22 @@
-# Lens Cleaner
+# PhotoSweep: Duplicates Cleaner for Google Photos
 
-AI-powered duplicate photo detector built with Svelte and Transformers.js
+Smartly identify and sweep away duplicate photos, free up cloud storage.
 
 ## Features
 
-- 🤖 **AI-Powered Detection**: Uses CLIP (Contrastive Language-Image Pre-training) model for accurate image similarity detection
-- 🔒 **Privacy First**: All processing happens locally in your browser - no server required
-- 📊 **Smart Grouping**: Groups similar photos based on visual similarity and temporal proximity
-- 🎨 **Beautiful UI**: Modern, responsive interface with purple gradient design
-- 💾 **Persistent Storage**: Uses IndexedDB to store photos and analysis results
-- ⚡ **Fast & Efficient**: Optimized performance with separate embeddings storage
+- 🤖 **Smart AI Detection**: Uses CLIP (Contrastive Language-Image Pre-training) model for accurate duplicate photo detection
+- 🔒 **Privacy First**: All processing happens locally in your browser - no data sent to servers
+- 📊 **Intelligent Grouping**: Groups similar photos based on visual similarity and capture time
+- 🎨 **Premium UI**: Beautiful, intuitive interface with modern design system
+- 💾 **Secure Local Storage**: Uses IndexedDB to store all data locally on your device
+- ⚡ **Lightning Fast**: Optimized performance with efficient embedding calculations and batch processing
 
 ## How It Works
 
-1. **Upload Photos**: Select photos from your computer
-2. **AI Analysis**: CLIP model generates 512-dimensional embeddings for each photo
-3. **Grouping**: Photos are grouped by similarity (configurable threshold) and time taken
-4. **Review & Delete**: Select and delete duplicate photos
+1. **Scan Your Library**: Open Google Photos and click PhotoSweep to analyze your library
+2. **Smart Detection**: Uses CLIP AI to analyze visual content and identify duplicates
+3. **Intelligent Grouping**: Groups similar photos based on visual similarity and capture time
+4. **Review & Clean**: Review detected duplicates and safely delete them with one click
 
 ## Technical Stack
 
@@ -121,7 +121,7 @@ Access settings by clicking the ⚙️ icon:
 
 ### Advanced
 
-The app stores all data in IndexedDB under the database name `LensCleanerDB`. You can clear all data using the "Clear All Data" button.
+PhotoSweep stores all data locally in IndexedDB under the database name `PhotoSweepDB`. You can clear all data using the "Clear All Data" button in the extension popup.
 
 ## Architecture
 

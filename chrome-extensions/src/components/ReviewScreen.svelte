@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import type { Photo, Group } from '../lib/db';
 	import PhotoGrid from './PhotoGrid.svelte';
 	import DuplicateGroup from './DuplicateGroup.svelte';
@@ -26,7 +26,9 @@
 
 	const GROUPS_PER_PAGE = 20;
 	let paginatedGroups: Group[] = displayGroups;
-	let loadedGroupsCount = 0;
+	let loadedGroupsCount = displayGroups.length; // Start from the number of groups already loaded
+	let initialDisplayGroupsLength = displayGroups.length; // Track initial length to detect resets
+	let isInitialized = false; // Track if pagination has been initialized
 	let isLoadingGroups = false;
 	let groupsContainer: HTMLElement | null = null;
 
@@ -57,8 +59,26 @@
 	// Pagination logic
 	onMount(async () => {
 		if (enableGroupPagination && totalGroupsCount > 0) {
-			await loadMoreGroups();
+			// Initialize loadedGroupsCount to match the groups already in displayGroups
+			loadedGroupsCount = displayGroups.length;
+			initialDisplayGroupsLength = displayGroups.length;
+			isInitialized = true; // Mark as initialized so reactive statement can handle resets
+			// Load initial batch immediately if we have room for more
+			// This ensures we show more than just the initial 50 groups
+			if (loadedGroupsCount < totalGroupsCount) {
+				// Load enough to fill the first page (at least GROUPS_PER_PAGE more)
+				const groupsToLoad = Math.min(GROUPS_PER_PAGE, totalGroupsCount - loadedGroupsCount);
+				const batch = await db.getGroupsBatch(loadedGroupsCount, groupsToLoad);
+				paginatedGroups = [...paginatedGroups, ...batch];
+				loadedGroupsCount += batch.length;
+			}
 			setupGroupScrollListener();
+			// Check if we're already scrolled down and need to load more
+			setTimeout(() => {
+				if (scrollHandler) {
+					scrollHandler();
+				}
+			}, 100);
 		} else {
 			paginatedGroups = displayGroups;
 		}
@@ -78,31 +98,69 @@
 		}
 	}
 
+	let scrollHandler: (() => void) | null = null;
+
 	function setupGroupScrollListener() {
-		const checkScroll = () => {
-			if (!groupsContainer) return;
-			const { scrollTop, scrollHeight, clientHeight } = groupsContainer;
+		scrollHandler = () => {
+			if (isLoadingGroups || loadedGroupsCount >= totalGroupsCount) return;
+			
+			// Check window scroll (most common case)
+			const windowHeight = window.innerHeight;
+			const documentHeight = document.documentElement.scrollHeight;
+			const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+			
 			// Load more when 80% scrolled
-			if (scrollTop + clientHeight > scrollHeight * 0.8 && !isLoadingGroups) {
+			if (scrollTop + windowHeight > documentHeight * 0.8) {
 				loadMoreGroups();
+				return;
+			}
+			
+			// Also check container scroll if it exists and is scrollable
+			if (groupsContainer) {
+				const { scrollTop: containerScrollTop, scrollHeight: containerScrollHeight, clientHeight: containerClientHeight } = groupsContainer;
+				if (containerScrollTop + containerClientHeight > containerScrollHeight * 0.8) {
+					loadMoreGroups();
+				}
 			}
 		};
 
-		// Find scroll container
+		// Always listen to window scroll (main scroll mechanism)
+		if (scrollHandler) {
+			window.addEventListener('scroll', scrollHandler, { passive: true });
+		}
+
+		// Also try to find and listen to container scroll if it exists
 		let retries = 0;
 		const findContainer = setInterval(() => {
 			groupsContainer = document.querySelector('.review-screen-container');
 			if (groupsContainer || retries++ > 10) {
 				clearInterval(findContainer);
-				if (groupsContainer) {
-					groupsContainer.addEventListener('scroll', checkScroll);
+				if (groupsContainer && scrollHandler) {
+					groupsContainer.addEventListener('scroll', scrollHandler);
 				}
 			}
 		}, 100);
 	}
 
-	// Update paginatedGroups when displayGroups changes (non-pagination mode)
+	onDestroy(() => {
+		// Clean up scroll listeners
+		if (scrollHandler) {
+			if (groupsContainer) {
+				groupsContainer.removeEventListener('scroll', scrollHandler);
+			}
+			window.removeEventListener('scroll', scrollHandler);
+		}
+	});
+
+	// Update paginatedGroups when displayGroups changes
+	// For pagination mode, we only reset if displayGroups actually changed (e.g., after regroup)
+	// We don't want to reset just because displayGroups stays at initial size while we paginate
 	$: if (!enableGroupPagination) {
+		paginatedGroups = displayGroups;
+	} else if (enableGroupPagination && isInitialized && displayGroups.length !== initialDisplayGroupsLength) {
+		// displayGroups was refreshed/reset (e.g., after regroup), so reset pagination
+		initialDisplayGroupsLength = displayGroups.length;
+		loadedGroupsCount = displayGroups.length;
 		paginatedGroups = displayGroups;
 	}
 
@@ -285,8 +343,8 @@
 			</div>
 		{/if}
 
-		<!-- Ungrouped Photos -->
-		{#if ungroupedPhotos.length > 0}
+		<!-- Ungrouped Photos - Only show after all groups are loaded -->
+		{#if ungroupedPhotos.length > 0 && (!enableGroupPagination || loadedGroupsCount >= totalGroupsCount)}
 			<div class="mt-12 border-t-4 border-dashed border-black/20 pt-12">
 				<div class="mb-6">
 					<h2 class="mb-2 text-3xl font-black text-black">

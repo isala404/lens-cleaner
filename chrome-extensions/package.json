@@ -1,8 +1,8 @@
 {
-	"name": "lens-cleaner",
+	"name": "photosweep",
 	"private": true,
 	"version": "1.0.0",
-	"description": "AI-powered duplicate photo detector",
+	"description": "PhotoSweep: Duplicates Cleaner for Google Photos - Smartly identify and sweep away duplicate photos",
 	"type": "module",
 	"scripts": {
 		"dev": "vite",

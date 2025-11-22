@@ -1,8 +1,8 @@
 <div class="mx-auto max-w-2xl px-5 py-10 text-center">
-	<div class="mb-6 animate-[gentle-bounce_4s_ease-in-out_infinite] text-8xl">📷</div>
-	<h2 class="mb-4 text-5xl font-black tracking-tight text-black">Welcome to Lens Cleaner!</h2>
+	<div class="mb-6 animate-[gentle-bounce_4s_ease-in-out_infinite] text-8xl">🧹</div>
+	<h2 class="mb-4 text-5xl font-black tracking-tight text-black">Welcome to PhotoSweep!</h2>
 	<p class="mb-12 text-xl leading-relaxed font-medium text-brutalist-gray">
-		Let's find and remove duplicate photos from your Google Photos library.
+		Smart duplicate detection to free up your Google Photos cloud storage.
 	</p>
 	<div class="flex flex-col gap-6 text-left">
 		<div
